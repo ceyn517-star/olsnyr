@@ -162,6 +162,37 @@ async function downloadFromGDrive(fileId, destPath, fileName) {
   }
 }
 
+async function checkFileHasData(filePath, fileName) {
+  // Read first 200 lines to check for INSERT statements or JSON data
+  try {
+    const rs = fs.createReadStream(filePath, { encoding: 'utf8' });
+    const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
+    let lineCount = 0;
+    let insertCount = 0;
+    const previewLines = [];
+
+    for await (const line of rl) {
+      lineCount++;
+      if (previewLines.length < 10) previewLines.push(line);
+      if (line.match(/INSERT INTO/gi)) insertCount++;
+      if (lineCount >= 200) {
+        rl.close();
+        rs.destroy();
+        break;
+      }
+    }
+
+    const preview = previewLines.join('\n').slice(0, 500);
+    console.log(`[FileCheck] ${fileName} - ilk ${lineCount} satır tarandı, ${insertCount} INSERT bulundu`);
+    console.log(`[FileCheck] ${fileName} - içerik önizleme:\n${preview || '(boş)'}`);
+
+    return { hasData: insertCount > 0 || (fileName.endsWith('.txt') && lineCount > 0 && !previewLines[0]?.includes('<html')), insertCount, lineCount, preview };
+  } catch (err) {
+    console.error(`[FileCheck] ${fileName} kontrol hatası:`, err.message);
+    return { hasData: false, insertCount: 0, lineCount: 0, preview: '' };
+  }
+}
+
 async function downloadDataFiles() {
   const files = [
     { name: 'za.sql', id: '12GAV9hjm1JwqJYejeFGatqud-88Vsace' },
@@ -171,18 +202,51 @@ async function downloadDataFiles() {
   ];
 
   let downloaded = 0;
+  let emptyAfterDownload = 0;
+
   for (const { name, id } of files) {
     const filePath = path.join(DATA_DIR, name);
+
+    // If file already exists and is large enough, verify it actually has data
     if (fs.existsSync(filePath) && fs.statSync(filePath).size > 1000) {
-      console.log(`[Download] ${name} zaten var (${(fs.statSync(filePath).size / 1024 / 1024).toFixed(1)} MB), atlanıyor`);
-      continue;
+      const sizeMB = (fs.statSync(filePath).size / 1024 / 1024).toFixed(1);
+      console.log(`[Download] ${name} zaten var (${sizeMB} MB), veri kontrolü yapılıyor...`);
+
+      const { hasData, insertCount } = await checkFileHasData(filePath, name);
+      if (!hasData && name.endsWith('.sql')) {
+        console.warn(`[Download] ⚠️  ${name} mevcut ama INSERT içermiyor (${sizeMB} MB) — dosya siliniyor, yeniden indirilecek`);
+        fs.unlinkSync(filePath);
+      } else {
+        console.log(`[Download] ${name} geçerli veri içeriyor (${insertCount} INSERT), atlanıyor`);
+        continue;
+      }
     }
+
     const ok = await downloadFromGDrive(id, filePath, name);
-    if (ok) downloaded++;
+    if (!ok) continue;
+
+    // Verify the freshly downloaded file actually contains data
+    const sizeMB = (fs.statSync(filePath).size / 1024 / 1024).toFixed(1);
+    const { hasData, insertCount, preview } = await checkFileHasData(filePath, name);
+
+    if (!hasData && name.endsWith('.sql')) {
+      console.error(`[Download] ❌ ${name} indirildi (${sizeMB} MB) ama INSERT içermiyor — dosya siliniyor`);
+      console.error(`[Download] ❌ ${name} içerik önizleme: ${preview.slice(0, 200) || '(boş)'}`);
+      fs.unlinkSync(filePath);
+      emptyAfterDownload++;
+    } else {
+      console.log(`[Download] ✅ ${name} doğrulandı: ${insertCount} INSERT, ${sizeMB} MB`);
+      downloaded++;
+    }
+  }
+
+  if (emptyAfterDownload > 0 && downloaded === 0) {
+    console.error(`[Download] 🚨 KRİTİK: İndirilen tüm SQL dosyaları boş veya bozuk! Google Drive dosya ID'leri yanlış olabilir veya dosyalar erişilemez durumda.`);
+    console.error(`[Download] 🚨 Lütfen şu Drive ID'lerini kontrol edin: za.sql=12GAV9hjm1JwqJYejeFGatqud-88Vsace, zagros.sql=1SUoLWqm-SsbL6tDgdaP-Tc68v6B72vuZ, zagrs.sql=1KmjL89fGLCaeeQv4soJ2SnI7DaZS8qjA`);
   }
 
   if (downloaded > 0) {
-    console.log(`[Download] ${downloaded} dosya indirildi, kaynaklar yeniden yükleniyor...`);
+    console.log(`[Download] ${downloaded} dosya indirildi ve doğrulandı, kaynaklar yeniden yükleniyor...`);
     detectDataSources();
   }
 }
@@ -1758,6 +1822,80 @@ app.get('/api/files', (req, res) => {
     });
   } catch (err) {
     console.error('[/api/files] Error:', err.message);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// GET /api/debug/files - Show content preview of each data file to diagnose empty/corrupted downloads
+app.get('/api/debug/files', async (req, res) => {
+  try {
+    const results = [];
+    const allFiles = [
+      ...SQL_PATHS.map(p => ({ filePath: p, type: 'sql' })),
+      { filePath: TXT_PATH, type: 'txt' }
+    ];
+
+    for (const { filePath, type } of allFiles) {
+      const name = path.basename(filePath);
+      const entry = { name, type, path: filePath, exists: false };
+
+      if (!fs.existsSync(filePath)) {
+        entry.error = 'Dosya bulunamadı';
+        results.push(entry);
+        continue;
+      }
+
+      const stat = fs.statSync(filePath);
+      entry.exists = true;
+      entry.size_bytes = stat.size;
+      entry.size_mb = parseFloat((stat.size / 1024 / 1024).toFixed(2));
+      entry.modified = stat.mtime.toISOString();
+
+      // Read first 500 chars and count INSERT lines in first 200 lines
+      try {
+        const rs = fs.createReadStream(filePath, { encoding: 'utf8' });
+        const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
+        let lineCount = 0;
+        let insertCount = 0;
+        const previewLines = [];
+
+        for await (const line of rl) {
+          lineCount++;
+          if (previewLines.length < 15) previewLines.push(line);
+          if (line.match(/INSERT INTO/gi)) insertCount++;
+          if (lineCount >= 200) {
+            rl.close();
+            rs.destroy();
+            break;
+          }
+        }
+
+        const rawPreview = previewLines.join('\n');
+        entry.preview = rawPreview.slice(0, 500);
+        entry.preview_lines_scanned = lineCount;
+        entry.insert_count_in_preview = insertCount;
+        entry.has_data = insertCount > 0 || (type === 'txt' && lineCount > 0 && !previewLines[0]?.includes('<html'));
+        entry.looks_like_html = previewLines[0]?.includes('<html') || previewLines[0]?.includes('<!DOCTYPE');
+      } catch (readErr) {
+        entry.error = `Okuma hatası: ${readErr.message}`;
+      }
+
+      results.push(entry);
+    }
+
+    const allEmpty = results.filter(r => r.exists && r.type === 'sql').every(r => !r.has_data);
+    if (allEmpty) {
+      console.error('[Debug/Files] 🚨 KRİTİK: Tüm SQL dosyaları boş veya bozuk görünüyor!');
+    }
+
+    return res.json({
+      ok: true,
+      data_dir: DATA_DIR,
+      all_sql_empty: allEmpty,
+      files: results
+    });
+  } catch (err) {
+    console.error('[/api/debug/files] Hata:', err.message);
     return res.status(500).json({ ok: false, error: err.message });
   }
 });
