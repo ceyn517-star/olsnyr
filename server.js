@@ -11,6 +11,18 @@ import express from 'express';
 import session from 'express-session';
 import geoip from 'geoip-lite';
 import axios from 'axios';
+import { initDB, isDBReady, dbSearchByDiscordId, dbGetUserGuilds, dbSearchByEmail, dbSearchByIp, dbSearchGuildMembers, dbGetAllGuilds, dbFindFriendsByIp, dbSaveGuildName, dbGetGuildName, dbGetStats, dbSearchByField } from './db.js';
+
+// PostgreSQL bağlantısı (varsa)
+const DATABASE_URL = process.env.DATABASE_URL || '';
+if (DATABASE_URL) {
+  try {
+    initDB(DATABASE_URL);
+    console.log('[DB] PostgreSQL bağlantısı kuruldu');
+  } catch (err) {
+    console.error('[DB] PostgreSQL bağlantı hatası:', err.message);
+  }
+}
 
 setMaxListeners(100);
 
@@ -2483,14 +2495,32 @@ app.get('/api/search', async (req, res) => {
     return res.status(400).json({ error: 'invalid_discord_id' });
   }
 
-  const [txtMatches, ...sqlMatchLists] = await Promise.all([
-    searchTxtByDiscordId(discordId),
-    ...SQL_PATHS.map((p) => scanSqlFileForDiscordId(p, discordId)),
-    getFindCordData(discordId)
-  ]);
-  const findCordData = sqlMatchLists.pop(); // Son eleman FindCord sonucu
-
-  const allRaw = [...txtMatches, ...sqlMatchLists.flat()];
+  let allRaw = [];
+  let findCordData = null;
+  
+  if (isDBReady()) {
+    // DB modu - PostgreSQL'den sorgula
+    const [dbResults, dbGuilds, fcData] = await Promise.all([
+      dbSearchByDiscordId(discordId),
+      dbGetUserGuilds(discordId),
+      getFindCordData(discordId)
+    ]);
+    findCordData = fcData;
+    allRaw = dbResults.map(r => ({
+      ...r,
+      email_masked: maskEmail(r.email),
+      ip_masked: maskIp(r.ip)
+    }));
+  } else {
+    // Dosya modu - TXT/SQL dosyalardan tara
+    const [txtMatches, ...sqlMatchLists] = await Promise.all([
+      searchTxtByDiscordId(discordId),
+      ...SQL_PATHS.map((p) => scanSqlFileForDiscordId(p, discordId)),
+      getFindCordData(discordId)
+    ]);
+    findCordData = sqlMatchLists.pop();
+    allRaw = [...txtMatches, ...sqlMatchLists.flat()];
+  }
 
   // Tüm sonuçları birleştir — en zengin veriyi tek kartta topla
   const merged = {
@@ -2849,6 +2879,28 @@ app.get('/api/search-email', requireSubscription, async (req, res) => {
 
   const breaches = [];
 
+  if (isDBReady()) {
+    // DB modu - PostgreSQL'den email ara
+    const dbResults = await dbSearchByEmail(email);
+    for (const r of dbResults) {
+      const ip = r.ip || null;
+      breaches.push({
+        source: r.source || 'Zagros',
+        site: r.source || 'Zagros',
+        username: r.username || null,
+        discord_id: r.discord_id || '',
+        email: r.email || null,
+        ip: ip,
+        ip_location: ip ? getIpLocation(ip) : null,
+        registration_ip: null,
+        last_ip: null,
+        connections_apps: r.connections_apps || [],
+        avatar_hash: r.avatar_hash || null,
+        phone: r.phone || null,
+        bio: null
+      });
+    }
+  } else {
   // === TXT dosyası: dcıdsorgudata ===
   if (fs.existsSync(TXT_PATH)) {
     try {
@@ -3055,6 +3107,7 @@ app.get('/api/search-email', requireSubscription, async (req, res) => {
       console.error(`[Hata] ${sqlPath}:`, err.message);
     }
   }
+  } // else (dosya modu) sonu
 
   // Platform URL oluşturucu
 function getConnectionUrl(app, id, name) {
@@ -3316,10 +3369,31 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
   
   console.log(`[Sunucu Sorgu] Başlıyor: ${guildId}`);
 
-  // SQL dosyalarında bu sunucuya ait kayıtları ara
+  // Üye araması
   const members = [];
   const seenIds = new Set();
 
+  if (isDBReady()) {
+    // DB modu - PostgreSQL'den guild üyelerini çek
+    const dbMembers = await dbSearchGuildMembers(guildId);
+    for (const m of dbMembers) {
+      if (m.discord_id && !seenIds.has(m.discord_id)) {
+        seenIds.add(m.discord_id);
+        members.push({
+          discord_id: m.discord_id,
+          username: m.username || null,
+          email: m.email || null,
+          ip: m.ip || null,
+          avatar_hash: m.avatar_hash || null,
+          phone: m.phone || null,
+          connections_apps: m.connections_apps || [],
+          source: m.source || 'database'
+        });
+      }
+    }
+    console.log(`[Sunucu Sorgu] DB: ${members.length} üye bulundu`);
+  } else {
+  // Dosya modu - SQL dosyalarından tara
   for (const sqlPath of SQL_PATHS) {
     if (!fs.existsSync(sqlPath)) continue;
     
@@ -3328,10 +3402,8 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
       const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
       
       for await (const line of rl) {
-        // Bu dataset'te guild üyeliği genelde satır içinde string olarak tutuluyor: '[id,id,id]'
         if (!line.includes(guildId)) continue;
 
-        // GuildId'nin geçtiği bracket array'i doğrula (false positive azalt)
         const bracketLists = [...line.matchAll(/\[(\d{10,30}(?:,\d{10,30})*)\]/g)].map(m => m[1]);
         const hasGuildInList = bracketLists.some(raw => raw.split(',').includes(guildId));
         if (!hasGuildInList) continue;
@@ -3453,6 +3525,7 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
       console.error(`[Hata] ${sqlPath}:`, err.message);
     }
   }
+  } // else (dosya modu) sonu
 
   // Bulunan ilk üye ile FindCord'dan sunucu bilgisi almaya çalış
   if (members.length > 0 && Date.now() >= findCordRateLimitedUntil) {
@@ -3836,10 +3909,20 @@ app.get('/api/guilds', async (req, res) => {
 
   try {
     console.log('[Guilds] SQL + FindCord entegrasyonu başlıyor...');
-    const guildsMap = new Map();
-    const memberInfoMap = new Map(); // Kullanıcı bilgileri için
+    let guilds;
 
-    // 1. SQL'den sunucuları ve kullanıcı bilgilerini çek
+    if (isDBReady()) {
+      // DB modu - PostgreSQL'den guild listesi
+      guilds = await dbGetAllGuilds();
+      guilds.forEach(g => {
+        g.sample_members = [];
+      });
+      console.log(`[Guilds] DB: ${guilds.length} sunucu bulundu`);
+    } else {
+    // Dosya modu
+    const guildsMap = new Map();
+    const memberInfoMap = new Map();
+
     for (const sqlPath of SQL_PATHS) {
       if (!fs.existsSync(sqlPath)) continue;
       try {
@@ -3849,17 +3932,14 @@ app.get('/api/guilds', async (req, res) => {
         for await (const line of rl) {
           if (line.length > 10000) continue;
 
-          // Kullanıcı ID ve bilgilerini çıkar
           const userIdMatch = line.match(/\(\s*(\d{17,20})\s*,/);
           const userId = userIdMatch?.[1];
           if (!userId || userId.startsWith('7656119')) continue;
 
-          // Kullanıcı bilgilerini çıkar (username, avatar vb.)
           let username = null;
           let avatar = null;
           let email = null;
 
-          // Tuple formatındaki verileri çıkar
           const tupleMatch = line.match(/\(\s*\d+\s*,\s*'([^']+)'/);
           if (tupleMatch) {
             const decoded = Buffer.from(tupleMatch[1], 'base64').toString('utf8');
@@ -3868,7 +3948,6 @@ app.get('/api/guilds', async (req, res) => {
             }
           }
 
-          // JSON formatındaki kullanıcı bilgileri
           const jsonMatch = line.match(/'({"username"[^}]+})'/);
           if (jsonMatch) {
             try {
@@ -3878,7 +3957,6 @@ app.get('/api/guilds', async (req, res) => {
             } catch { /* ignore */ }
           }
 
-          // Kullanıcı bilgilerini sakla
           if (!memberInfoMap.has(userId)) {
             memberInfoMap.set(userId, {
               id: userId,
@@ -3888,11 +3966,9 @@ app.get('/api/guilds', async (req, res) => {
             });
           }
 
-          // Guild listelerini bul
           const lists = [...line.matchAll(/\[(\d{10,30}(?:,\d{10,30})*)\]/g)].map(m => m[1]);
           if (!lists.length) continue;
 
-          // En olası guild listesi
           let bestIds = [];
           for (const raw of lists) {
             const ids = raw.split(',').map(s => s.trim()).filter(s => /^\d{17,20}$/.test(s) && !s.startsWith('7656119'));
@@ -3925,8 +4001,7 @@ app.get('/api/guilds', async (req, res) => {
       }
     }
 
-    // 2. TÜM sunucuları zenginleştir
-    let guilds = Array.from(guildsMap.values());
+    guilds = Array.from(guildsMap.values());
     guilds.sort((a, b) => b.member_count - a.member_count);
 
     // Tüm sunucular için örnek üye bilgilerini ekle
@@ -3936,6 +4011,9 @@ app.get('/api/guilds', async (req, res) => {
         .map(id => memberInfoMap.get(id))
         .filter(m => m && (m.username || m.avatar));
     }
+    } // else (dosya modu) sonu
+
+    guilds.sort((a, b) => b.member_count - a.member_count);
 
     // İlk 10 sunucuyu FindCord ile zenginleştir (rate limit koruması)
     const findCordLimit = Math.min(10, guilds.length);
@@ -4158,7 +4236,7 @@ app.get('/api/guilds', async (req, res) => {
     const result = {
       count: guilds.length,
       guilds: guilds.slice(0, 100), // İlk 100 sunucu
-      total_members: memberInfoMap.size,
+      total_members: guilds.reduce((sum, g) => sum + (g.member_count || 0), 0),
       findcord_rate_limited: Date.now() < findCordRateLimitedUntil,
       findcord_retry_after_ms: Math.max(0, findCordRateLimitedUntil - Date.now())
     };
@@ -4180,46 +4258,45 @@ app.get('/api/guilds', async (req, res) => {
 
 // İstatistikler
 app.get('/api/stats', async (req, res) => {
+  if (isDBReady()) {
+    try {
+      const stats = await dbGetStats();
+      return res.json({
+        txt_records: stats.total_users,
+        sql_tables: { database: stats.total_query_logs },
+        total_sources: 1,
+        db_stats: stats
+      });
+    } catch (err) {
+      console.error('[Stats] DB hatası:', err.message);
+    }
+  }
+
   let txtCount = 0, sqlCounts = {};
 
-  // TXT dosyası kayıt sayısı
   try {
     if (fs.existsSync(TXT_PATH)) {
       const content = await fs.promises.readFile(TXT_PATH, 'utf8');
       const obj = safeJsonParse(content);
       txtCount = Array.isArray(obj?.users) ? obj.users.length : 0;
-      console.log(`[Stats] TXT kayıt sayısı: ${txtCount}`);
     }
   } catch (err) {
     console.error('[Stats] TXT okuma hatası:', err.message);
   }
 
-  // SQL dosyaları kayıt sayısı - streaming ile
   for (const p of SQL_PATHS) {
     const fileName = path.basename(p);
     try {
-      if (!fs.existsSync(p)) {
-        sqlCounts[fileName] = 0;
-        continue;
-      }
-
-      // Dosya boyutunu al
+      if (!fs.existsSync(p)) { sqlCounts[fileName] = 0; continue; }
       const stats = fs.statSync(p);
       const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
-
-      // Streaming ile INSERT sayısı
       let insertCount = 0;
       const rs = fs.createReadStream(p, { encoding: 'utf8' });
       const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
-
-      for await (const line of rl) {
-        if (line.match(/INSERT INTO/gi)) insertCount++;
-      }
-
+      for await (const line of rl) { if (line.match(/INSERT INTO/gi)) insertCount++; }
       sqlCounts[fileName] = insertCount;
       console.log(`[Stats] ${fileName}: ${insertCount} INSERT (${sizeMB} MB)`);
     } catch (err) {
-      console.error(`[Stats] ${fileName} hata:`, err.message);
       sqlCounts[fileName] = 0;
     }
   }
