@@ -1854,12 +1854,11 @@ app.use(express.json({ limit: '1mb' }));
 app.use(session({
   secret: 'zagros-session-secret-v2',
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false,
   cookie: {
+    secure: false,
     httpOnly: true,
-    secure: false, // Local development için false
-    sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000 // 24 saat
+    maxAge: 24 * 60 * 60 * 1000
   }
 }));
 
