@@ -1717,6 +1717,129 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// GET /api/files - List available SQL and data files
+app.get('/api/files', (req, res) => {
+  try {
+    const files = [];
+
+    // Enumerate all tracked SQL paths
+    for (const sqlPath of SQL_PATHS) {
+      const name = path.basename(sqlPath);
+      const exists = fs.existsSync(sqlPath);
+      const entry = { name, path: sqlPath, type: 'sql', available: exists };
+      if (exists) {
+        const stat = fs.statSync(sqlPath);
+        entry.size_bytes = stat.size;
+        entry.size_mb = parseFloat((stat.size / 1024 / 1024).toFixed(2));
+        entry.modified = stat.mtime.toISOString();
+      }
+      files.push(entry);
+    }
+
+    // TXT data file
+    const txtName = path.basename(TXT_PATH);
+    const txtExists = fs.existsSync(TXT_PATH);
+    const txtEntry = { name: txtName, path: TXT_PATH, type: 'txt', available: txtExists };
+    if (txtExists) {
+      const stat = fs.statSync(TXT_PATH);
+      txtEntry.size_bytes = stat.size;
+      txtEntry.size_mb = parseFloat((stat.size / 1024 / 1024).toFixed(2));
+      txtEntry.modified = stat.mtime.toISOString();
+    }
+    files.push(txtEntry);
+
+    const available = files.filter(f => f.available).length;
+    return res.json({
+      ok: true,
+      data_dir: DATA_DIR,
+      total: files.length,
+      available,
+      files
+    });
+  } catch (err) {
+    console.error('[/api/files] Error:', err.message);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/query - Execute a field-based query against SQL/TXT data files
+app.post('/api/query', async (req, res) => {
+  try {
+    const { field, value, limit } = req.body || {};
+
+    if (!field || typeof field !== 'string' || !field.trim()) {
+      return res.status(400).json({ ok: false, error: 'missing_field', message: 'Request body must include a "field" string (e.g. "email", "ip", "username", "discord_id").' });
+    }
+    if (!value || typeof value !== 'string' || !value.trim()) {
+      return res.status(400).json({ ok: false, error: 'missing_value', message: 'Request body must include a "value" string to search for.' });
+    }
+
+    const normalizedField = field.trim().toLowerCase();
+    const normalizedValue = value.trim();
+    const maxHits = Math.min(Math.max(parseInt(limit) || 50, 1), 200);
+
+    const availableSqlPaths = SQL_PATHS.filter(p => fs.existsSync(p));
+    if (availableSqlPaths.length === 0 && !fs.existsSync(TXT_PATH)) {
+      return res.status(503).json({ ok: false, error: 'no_data_sources', message: 'No data files are currently available. Files may still be downloading.' });
+    }
+
+    const results = [];
+
+    // Search TXT file if querying by discord_id, email, username, or ip
+    if (fs.existsSync(TXT_PATH)) {
+      try {
+        const content = await fs.promises.readFile(TXT_PATH, 'utf8');
+        const obj = safeJsonParse(content);
+        const users = Array.isArray(obj?.users) ? obj.users : [];
+        const needle = normalizedValue.toLowerCase();
+        for (const u of users) {
+          const fieldVal = String(u[normalizedField] ?? u[field] ?? '').toLowerCase();
+          if (fieldVal.includes(needle)) {
+            results.push({
+              source: path.basename(TXT_PATH),
+              discord_id: String(u.discord_id ?? ''),
+              username: u.username || null,
+              email: u.email || null,
+              ip: u.registration_ip || u.last_ip || null,
+              subscription_type: u.subscription_type || null,
+              created_at: u.created_at || null
+            });
+            if (results.length >= maxHits) break;
+          }
+        }
+      } catch (err) {
+        console.error('[/api/query] TXT read error:', err.message);
+      }
+    }
+
+    // Search SQL files using the existing scanSqlFileForField helper
+    if (results.length < maxHits) {
+      const remaining = maxHits - results.length;
+      const sqlResults = await Promise.all(
+        availableSqlPaths.map(p => scanSqlFileForField(p, normalizedField, normalizedValue, remaining))
+      );
+      for (const batch of sqlResults) {
+        for (const row of batch) {
+          results.push({ source: path.basename(availableSqlPaths[sqlResults.indexOf(batch)]), ...row });
+          if (results.length >= maxHits) break;
+        }
+        if (results.length >= maxHits) break;
+      }
+    }
+
+    return res.json({
+      ok: true,
+      field: normalizedField,
+      value: normalizedValue,
+      count: results.length,
+      results
+    });
+  } catch (err) {
+    console.error('[/api/query] Error:', err.message);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // CORS - tüm origin'lere izin ver (local development)
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
