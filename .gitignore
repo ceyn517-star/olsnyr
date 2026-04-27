@@ -1,0 +1,31 @@
+node_modules/
+.env
+.env.local
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.cache/
+dist/
+build/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data files (auto-downloaded from Google Drive on server start)
+*.sql
+dcıdsorgudata.txt
+dcidsorgudata.txt
+
+# Runtime data
+visitors.json
+guild_names_cache.json
+subscriptions.json
+admin_data.json
+
+# Helper scripts & tokens
+create_repo*.js
+github_token*
