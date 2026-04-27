@@ -1712,6 +1712,11 @@ async function scanSqlFileForDiscordId(sqlPath, discordId, maxHits = 50) {
 const app = express();
 app.disable('x-powered-by');
 
+// Health check endpoint for Railway
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // CORS - tüm origin'lere izin ver (local development)
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
