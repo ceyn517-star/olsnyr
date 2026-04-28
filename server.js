@@ -567,7 +567,7 @@ async function performEmailOSINT(email) {
   return results;
 }
 
-async function enrichGuildsFromMembers(guilds, limit = 10) {
+async function enrichGuildsFromMembers(guilds, limit = 30) {
   if (!Array.isArray(guilds) || guilds.length === 0) return;
   if (Date.now() < findCordRateLimitedUntil) return;
 
@@ -577,32 +577,48 @@ async function enrichGuildsFromMembers(guilds, limit = 10) {
 
   for (const guild of candidates) {
     if (Date.now() < findCordRateLimitedUntil) break;
-    const sampleId = (guild.sample_member_ids && guild.sample_member_ids[0]) || (guild.sample_members && guild.sample_members[0]?.id);
-    if (!sampleId) continue;
-
-    try {
-      const fcData = await getFindCordData(sampleId);
-      if (!fcData?.Guilds?.length) continue;
-      const matchingGuild = fcData.Guilds.find(g =>
-        String(g.GuildId) === String(guild.id) || String(g.id) === String(guild.id)
-      );
-      if (!matchingGuild) continue;
-
-      const meta = {
-        name: matchingGuild.GuildName || matchingGuild.name,
-        icon: matchingGuild.GuildIcon || matchingGuild.icon || null,
-        banner: matchingGuild.GuildBanner || matchingGuild.banner || null,
-        description: matchingGuild.Description || matchingGuild.description || null
-      };
-
-      const changed = await applyGuildMetadata(guild, meta, 'directory');
-      if (changed) {
-        console.log(`[Guilds] 🔎 Katalog meta bulundu: ${guild.id} = ${guild.name}`);
+    
+    // Birden fazla sample member dene (en fazla 5)
+    const sampleIds = (guild.sample_member_ids || []).slice(0, 5);
+    if (guild.sample_members) {
+      for (const sm of guild.sample_members.slice(0, 5)) {
+        if (sm.id && !sampleIds.includes(sm.id)) sampleIds.push(sm.id);
       }
+    }
+    if (!sampleIds.length) continue;
 
-      await new Promise(r => setTimeout(r, 250));
-    } catch (err) {
-      console.log(`[Guilds] Directory enrich hata ${guild.id}:`, err.message);
+    let found = false;
+    for (const sampleId of sampleIds) {
+      if (Date.now() < findCordRateLimitedUntil) break;
+      if (found) break;
+      
+      try {
+        const fcData = await getFindCordData(sampleId);
+        if (!fcData?.Guilds?.length) continue;
+        
+        // Tüm guild'leri tara ve bu guild'i bul
+        const matchingGuild = fcData.Guilds.find(g =>
+          String(g.GuildId) === String(guild.id) || String(g.id) === String(guild.id)
+        );
+        if (!matchingGuild) continue;
+
+        const meta = {
+          name: matchingGuild.GuildName || matchingGuild.guild_name || matchingGuild.name,
+          icon: matchingGuild.GuildIcon || matchingGuild.guild_icon || matchingGuild.icon || matchingGuild.Icon || null,
+          banner: matchingGuild.GuildBanner || matchingGuild.guild_banner || matchingGuild.banner || matchingGuild.Banner || null,
+          description: matchingGuild.Description || matchingGuild.description || null
+        };
+
+        const changed = await applyGuildMetadata(guild, meta, 'findcord');
+        if (changed) {
+          console.log(`[Guilds] 🔎 FindCord meta bulundu: ${guild.id} = ${guild.name} (üye: ${sampleId})`);
+          found = true;
+        }
+
+        await new Promise(r => setTimeout(r, 150));
+      } catch (err) {
+        console.log(`[Guilds] FindCord enrich hata ${guild.id}:`, err.message);
+      }
     }
   }
 }
@@ -1209,8 +1225,32 @@ async function getFindCordData(userId) {
       },
       timeout: API_TIMEOUT
     });
-    findCordCache.set(cacheKey, { time: Date.now(), ttl: FINDCORD_CACHE_TTL_MS, data: response.data });
-    return response.data;
+    
+    const data = response.data;
+    
+    // FindCord verisini normalize et - Guilds alanını her formatta yakala
+    if (data) {
+      // Guilds alanını farklı formatlarda ara
+      const guilds = data.Guilds || data.guilds || data.Guild || data.guild || [];
+      if (Array.isArray(guilds) && guilds.length > 0) {
+        // Her guild için isim ve görsel bilgilerini normalize et
+        for (const g of guilds) {
+          const gid = String(g.GuildId || g.guild_id || g.id || '');
+          const gname = g.GuildName || g.guild_name || g.name || g.Name || '';
+          const gicon = g.GuildIcon || g.guild_icon || g.icon || g.Icon || '';
+          const gbanner = g.GuildBanner || g.guild_banner || g.banner || g.Banner || '';
+          const gdesc = g.Description || g.description || g.desc || '';
+          
+          // Guild ismini cache'e kaydet
+          if (gid && gname) {
+            rememberGuildName(gid, gname);
+          }
+        }
+      }
+    }
+    
+    findCordCache.set(cacheKey, { time: Date.now(), ttl: FINDCORD_CACHE_TTL_MS, data });
+    return data;
   } catch (error) {
     const status = error.response?.status;
     const message = error.response?.data?.message || error.response?.statusText || error.message;
@@ -1229,21 +1269,21 @@ async function getFindCordData(userId) {
 
 function normalizeFindCordData(userId, data) {
   if (!data) return null;
-  const ui = data.UserInfo || data.userInfo || {};
-  const avatar = ui.UserdisplayAvatar || ui.avatar || data.avatar || null;
-  const banner = ui.UserBanner || ui.banner || data.banner || null;
+  const ui = data.UserInfo || data.userInfo || data.user_info || {};
+  const avatar = ui.UserdisplayAvatar || ui.user_display_avatar || ui.avatar || data.avatar || null;
+  const banner = ui.UserBanner || ui.user_banner || ui.banner || data.banner || null;
 
   const normalized = {
     id: userId,
-    username: ui.UserName || ui.username || data.username || null,
-    global_name: ui.UserGlobalName || ui.global_name || data.global_name || null,
+    username: ui.UserName || ui.username || ui.user_name || data.username || null,
+    global_name: ui.UserGlobalName || ui.global_name || ui.user_global_name || data.global_name || null,
     avatar,
     banner,
-    bio: ui.UserBio || ui.bio || data.bio || null,
+    bio: ui.UserBio || ui.bio || ui.user_bio || data.bio || null,
     pronouns: ui.UserPronouns || ui.pronouns || data.pronouns || null,
-    presence: ui.Presence || data.Presence || data.presence || null,
-    badges: Array.isArray(ui.UserBadge) ? ui.UserBadge : (data.badges || data.Badges || []),
-    guilds: data.Guilds || data.guilds || [],
+    presence: ui.Presence || ui.presence || data.Presence || data.presence || null,
+    badges: Array.isArray(ui.UserBadge || ui.user_badge) ? (ui.UserBadge || ui.user_badge) : (data.badges || data.Badges || []),
+    guilds: data.Guilds || data.guilds || data.Guild || data.guild || [],
     raw: data
   };
 
@@ -1994,9 +2034,10 @@ async function fetchDCFlowLeaderboard(limit = 50) {
 async function resolveGuildName(guildId) {
   const guildIdStr = String(guildId);
   
-  // Önce cache kontrol
+  // Önce cache kontrol - isim varsa direkt döndür
   if (guildNamesCache.has(guildIdStr)) {
-    return { id: guildIdStr, name: guildNamesCache.get(guildIdStr), source: 'cache' };
+    const cachedName = guildNamesCache.get(guildIdStr);
+    return { id: guildIdStr, name: cachedName, source: 'cache' };
   }
 
   // Tüm API'lerden verileri paralel çek ve birleştir
@@ -3595,24 +3636,47 @@ app.get('/api/search', async (req, res) => {
         icon: b.icon ? `https://cdn.discordapp.com/badge-icons/${b.icon}.png` : null
       }));
     }
-    // Guilds
-    if (Array.isArray(findCordData.Guilds) && findCordData.Guilds.length > 0) {
-      merged.findcord_servers = findCordData.Guilds.map(g => ({
-        id: g.GuildId,
-        name: g.GuildName,
-        icon: g.GuildIcon || null,
-        banner: g.GuildBanner || null,
-        display_name: g.displayName || null,
-        booster: g.Booster || false,
-        join_time: g.JoinTime || null,
-        roles: Array.isArray(g.Roles) ? g.Roles.map(r => ({
-          id: r.id,
-          name: r.name,
-          color: r.color || null,
-          icon: r.icon || null
-        })) : [],
-        stats: g.UserStats || null
-      }));
+    // Guilds - tüm formatları yakala
+    const fcGuilds = findCordData.Guilds || findCordData.guilds || findCordData.Guild || findCordData.guild || [];
+    if (Array.isArray(fcGuilds) && fcGuilds.length > 0) {
+      merged.findcord_servers = fcGuilds.map(g => {
+        const gid = String(g.GuildId || g.guild_id || g.id || '');
+        const gname = g.GuildName || g.guild_name || g.name || g.Name || '';
+        const gicon = g.GuildIcon || g.guild_icon || g.icon || g.Icon || null;
+        const gbanner = g.GuildBanner || g.guild_banner || g.banner || g.Banner || null;
+        
+        // Icon URL oluştur
+        let icon_url = null;
+        if (gicon) {
+          if (gicon.startsWith('http')) icon_url = gicon;
+          else if (gid) icon_url = buildGuildIconUrl(gid, gicon);
+        }
+        // Banner URL oluştur
+        let banner_url = null;
+        if (gbanner) {
+          if (gbanner.startsWith('http')) banner_url = gbanner;
+          else if (gid) banner_url = buildGuildBannerUrl(gid, gbanner);
+        }
+        
+        return {
+          id: gid,
+          name: gname,
+          icon: gicon,
+          icon_url,
+          banner: gbanner,
+          banner_url,
+          display_name: g.displayName || g.Display || null,
+          booster: g.Booster || g.booster || false,
+          join_time: g.JoinTime || g.join_time || null,
+          roles: Array.isArray(g.Roles || g.roles) ? (g.Roles || g.roles).map(r => ({
+            id: r.id || r.Id,
+            name: r.name || r.Name,
+            color: r.color || r.Color || null,
+            icon: r.icon || r.Icon || null
+          })) : [],
+          stats: g.UserStats || g.user_stats || null
+        };
+      });
     }
     // Ek bilgiler
     if (findCordData.TopName) merged.findcord_top_name = findCordData.TopName;
@@ -4612,8 +4676,8 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
             member.username = fcData.UserInfo?.global_name || fcData.global_name;
           }
           // Avatar
-          if (!member.avatar_hash && (fcData.UserdisplayAvatar || fcData.avatar)) {
-            member.avatar_hash = fcData.UserdisplayAvatar || fcData.avatar;
+          if (!member.avatar_hash && (fcData.UserInfo?.UserdisplayAvatar || fcData.avatar)) {
+            member.avatar_hash = fcData.UserInfo?.UserdisplayAvatar || fcData.avatar;
             console.log(`[Guild Search] Found avatar for ${member.discord_id}`);
           }
         }
@@ -5149,9 +5213,9 @@ app.get('/api/guilds', requireSubscription, async (req, res) => {
       }
     }
 
-    await enrichGuildsFromMembers(guilds, 12);
+    await enrichGuildsFromMembers(guilds, 30);
 
-    const nameless = guilds.filter(g => !g.name || g.name === 'Bilinmeyen Sunucu').slice(0, 30);
+    const nameless = guilds.filter(g => !g.name || g.name === 'Bilinmeyen Sunucu').slice(0, 50);
     if (nameless.length > 0) {
       const resolved = await batchResolveGuildNames(nameless);
       for (const info of resolved) {

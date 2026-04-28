@@ -1007,6 +1007,7 @@ function createGuildsListView(data) {
   const sourceLabels = {
     database: 'Admin/DB',
     directory: 'Sunucu Dizini',
+    findcord: 'FindCord',
     widget: 'Discord Widget',
     disboard: 'Disboard',
     'disboard_tag': 'Disboard (Türk)',
@@ -1018,7 +1019,8 @@ function createGuildsListView(data) {
     'dcflow_leaderboard': 'DCFlow Leaderboard',
     cache: 'Önbellek',
     files: 'Arşiv',
-    external_resolver: 'Dış Kaynak'
+    external_resolver: 'Dış Kaynak',
+    multiple: 'Çoklu Kaynak'
   };
 
   // Premium Banner
@@ -1199,6 +1201,7 @@ function renderGuildDetailView(data) {
   const metadataSourceLabels = {
     database: 'Admin/DB',
     directory: 'Sunucu Dizini',
+    findcord: 'FindCord',
     widget: 'Discord Widget',
     disboard: 'Disboard',
     'disboard_tag': 'Disboard (Türk)',
@@ -1209,7 +1212,8 @@ function renderGuildDetailView(data) {
     dcflow: 'DCFlow',
     'dcflow_leaderboard': 'DCFlow Leaderboard',
     cache: 'Önbellek',
-    files: 'Arşiv'
+    files: 'Arşiv',
+    multiple: 'Çoklu Kaynak'
   };
 
   const membersWithLocation = members.filter(m => m.ip_location && m.ip_location.lat && m.ip_location.lon);
