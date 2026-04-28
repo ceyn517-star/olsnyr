@@ -27,6 +27,7 @@ const addEmailBtn = document.getElementById('addEmailBtn');
 let searchMode = 'id';
 var searchHistory = [];
 let lastResult = null;
+let authData = { tier: 'free' }; // Global auth state for tier checks
 
 function show(el) { el.classList.remove('hidden'); }
 function hide(el) { el.classList.add('hidden'); }
@@ -121,6 +122,8 @@ async function checkAuth() {
     if (res.ok) {
       const data = await res.json();
       if (data.authed) {
+        // Store auth data globally for tier checks
+        authData = { tier: data.tier || 'free' };
         hide(authCard); 
         show(appCard); 
         loadStats(); 
@@ -130,6 +133,7 @@ async function checkAuth() {
       }
     }
   } catch { /* ignore */ }
+  authData = { tier: 'free' };
   show(authCard); 
   hide(appCard); 
   return false;
@@ -168,6 +172,8 @@ document.getElementById('autoLoginBtn').addEventListener('click', autoLogin);
 async function autoLogin() {
   try {
     const response = await api('/api/login', { method: 'POST', body: JSON.stringify({}) });
+    // Store auth data globally
+    authData = { tier: response.tier || 'free', ...response };
     await checkAuth();
 
     let message = '🦁 Zagros OSINT Paneline hoş geldiniz!';
@@ -187,6 +193,8 @@ keyLoginBtn.addEventListener('click', async () => {
   const keyEl = document.getElementById('key');
   try {
     const response = await api('/api/login', { method: 'POST', body: JSON.stringify({ key: keyEl.value }) });
+    // Store auth data globally
+    authData = { tier: response.tier || 'free', ...response };
     keyEl.value = '';
     await checkAuth();
 
@@ -1061,8 +1069,8 @@ function createGuildsListView(data) {
       card.style.backgroundPosition = 'center';
     }
     card.onclick = async () => {
-      // Sunucu detayına git - Premium kontrolü
-      if (authData.tier === 'free') {
+      // Sunucu detayına git - Premium kontrolü (sadece free kullanıcıları kısıtla)
+      if (!authData || authData.tier === 'free') {
         showToast('⭐ Sunucu detayları sadece premium kullanıcılar içindir. discord.gg/zagros adresinden premium satın alabilirsiniz.', 'warning');
         return;
       }
