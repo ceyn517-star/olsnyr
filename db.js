@@ -183,29 +183,98 @@ export async function dbSearchGuildMembers(guildId) {
 }
 
 // ============= TÜM GUILD'LER LİSTESİ =============
-export async function dbGetAllGuilds() {
-  if (!pool) return [];
+export async function dbGetAllGuilds(options = {}) {
+  if (!pool) return { guilds: [], total: 0 };
+
+  const {
+    limit = 200,
+    offset = 0,
+    searchTerm = ''
+  } = options;
+
+  const limitVal = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
+  const offsetVal = Math.max(parseInt(offset, 10) || 0, 0);
+
+  const filters = [];
+  const params = [];
+  if (searchTerm) {
+    params.push(`%${searchTerm}%`);
+    const nameIdx = params.length;
+    params.push(`%${searchTerm}%`);
+    const idIdx = params.length;
+    filters.push(`(COALESCE(gc.name,'') ILIKE $${nameIdx} OR base.guild_id ILIKE $${idIdx})`);
+  }
+  const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+  const listQuery = `
+    WITH base AS (
+      SELECT ug.guild_id,
+             COUNT(DISTINCT ug.discord_id) AS member_count,
+             ARRAY_AGG(DISTINCT ug.discord_id ORDER BY ug.discord_id)
+               FILTER (WHERE ug.discord_id IS NOT NULL) AS sample_member_ids
+      FROM user_guilds ug
+      GROUP BY ug.guild_id
+    )
+    SELECT base.guild_id, base.member_count, base.sample_member_ids,
+           gc.name, gc.icon, gc.banner, gc.description, gc.updated_at
+    FROM base
+    LEFT JOIN guild_cache gc ON gc.guild_id = base.guild_id
+    ${whereClause}
+    ORDER BY base.member_count DESC
+    LIMIT $${params.length + 1}
+    OFFSET $${params.length + 2}
+  `;
+
+  const countQuery = `
+    WITH base AS (
+      SELECT DISTINCT guild_id FROM user_guilds
+    )
+    SELECT COUNT(*) AS count
+    FROM base
+    LEFT JOIN guild_cache gc ON gc.guild_id = base.guild_id
+    ${whereClause}
+  `;
+
+  const [listRes, countRes] = await Promise.all([
+    pool.query(listQuery, [...params, limitVal, offsetVal]),
+    pool.query(countQuery, params)
+  ]);
+
+  return {
+    guilds: listRes.rows.map(row => ({
+      id: row.guild_id,
+      name: row.name || null,
+      icon: row.icon || null,
+      banner: row.banner || null,
+      description: row.description || null,
+      member_count: parseInt(row.member_count, 10),
+      sample_member_ids: (row.sample_member_ids || []).slice(0, 10),
+      updated_at: row.updated_at
+    })),
+    total: Number(countRes.rows?.[0]?.count || 0)
+  };
+}
+
+export async function dbGetUsersByIds(discordIds = []) {
+  if (!pool || !discordIds?.length) return new Map();
+  const uniqueIds = Array.from(new Set(discordIds.map(id => String(id).trim()).filter(Boolean)));
+  if (!uniqueIds.length) return new Map();
 
   const res = await pool.query(
-    `SELECT ug.guild_id, COUNT(DISTINCT ug.discord_id) as member_count,
-            gc.name, gc.icon, gc.banner, gc.description,
-            ARRAY_AGG(DISTINCT ug.discord_id ORDER BY ug.discord_id) FILTER (WHERE ug.discord_id IS NOT NULL) as sample_member_ids
-     FROM user_guilds ug
-     LEFT JOIN guild_cache gc ON gc.guild_id = ug.guild_id
-     GROUP BY ug.guild_id, gc.name, gc.icon, gc.banner, gc.description
-     ORDER BY member_count DESC
-     LIMIT 200`
+    `SELECT discord_id, username, avatar_hash, connections FROM users WHERE discord_id = ANY($1::varchar[])`,
+    [uniqueIds]
   );
 
-  return res.rows.map(row => ({
-    id: row.guild_id,
-    name: row.name || null,
-    icon: row.icon || null,
-    banner: row.banner || null,
-    description: row.description || null,
-    member_count: parseInt(row.member_count),
-    sample_member_ids: (row.sample_member_ids || []).slice(0, 10)
-  }));
+  const map = new Map();
+  for (const row of res.rows) {
+    map.set(row.discord_id, {
+      id: row.discord_id,
+      username: row.username,
+      avatar_hash: row.avatar_hash,
+      connections: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || [])
+    });
+  }
+  return map;
 }
 
 // ============= IP İLE DİĞER DISCORD ID'LERİ BUL (Arkadaş Tespiti) =============
@@ -235,11 +304,11 @@ export async function dbSaveGuildName(guildId, name, icon, banner, description) 
     `INSERT INTO guild_cache (guild_id, name, icon, banner, description, updated_at) 
      VALUES ($1, $2, $3, $4, $5, NOW())
      ON CONFLICT (guild_id) DO UPDATE SET 
-       name = COALESCE(EXCLUDED.name, guild_cache.name),
-       icon = COALESCE(EXCLUDED.icon, guild_cache.icon),
-       banner = COALESCE(EXCLUDED.banner, guild_cache.banner),
-       description = COALESCE(EXCLUDED.description, guild_cache.description),
-       updated_at = NOW()`,
+      name = COALESCE(EXCLUDED.name, guild_cache.name),
+      icon = CASE WHEN EXCLUDED.icon IS DISTINCT FROM guild_cache.icon THEN EXCLUDED.icon ELSE guild_cache.icon END,
+      banner = CASE WHEN EXCLUDED.banner IS DISTINCT FROM guild_cache.banner THEN EXCLUDED.banner ELSE guild_cache.banner END,
+      description = CASE WHEN EXCLUDED.description IS DISTINCT FROM guild_cache.description THEN EXCLUDED.description ELSE guild_cache.description END,
+      updated_at = NOW()` ,
     [String(guildId), name, icon, banner, description]
   );
 }
@@ -248,6 +317,50 @@ export async function dbGetGuildName(guildId) {
   if (!pool) return null;
   const res = await pool.query('SELECT name, icon, banner, description FROM guild_cache WHERE guild_id = $1', [String(guildId)]);
   return res.rows[0] || null;
+}
+
+export async function dbListGuildNames(options = {}) {
+  if (!pool) return { names: [], total: 0 };
+  const { searchTerm = '', limit = 100, offset = 0 } = options;
+  const limitVal = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
+  const offsetVal = Math.max(parseInt(offset, 10) || 0, 0);
+
+  const params = [];
+  const filters = [];
+  if (searchTerm) {
+    params.push(`%${searchTerm}%`);
+    const nameIdx = params.length;
+    params.push(`%${searchTerm}%`);
+    const idIdx = params.length;
+    filters.push(`(COALESCE(name,'') ILIKE $${nameIdx} OR guild_id ILIKE $${idIdx})`);
+  }
+  const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+  const listQuery = `
+    SELECT guild_id, name, icon, banner, description, updated_at
+    FROM guild_cache
+    ${whereClause}
+    ORDER BY updated_at DESC NULLS LAST, guild_id ASC
+    LIMIT $${params.length + 1}
+    OFFSET $${params.length + 2}
+  `;
+
+  const countQuery = `SELECT COUNT(*) AS count FROM guild_cache ${whereClause}`;
+
+  const [listRes, countRes] = await Promise.all([
+    pool.query(listQuery, [...params, limitVal, offsetVal]),
+    pool.query(countQuery, params)
+  ]);
+
+  return {
+    names: listRes.rows,
+    total: Number(countRes.rows?.[0]?.count || 0)
+  };
+}
+
+export async function dbDeleteGuildName(guildId) {
+  if (!pool) return;
+  await pool.query('DELETE FROM guild_cache WHERE guild_id = $1', [String(guildId)]);
 }
 
 // ============= İSTATİSTİKLER =============

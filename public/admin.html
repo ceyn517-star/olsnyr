@@ -232,10 +232,11 @@
         </div>
 
         <div class="tabs">
-            <div class="tab active" onclick="switchTab('dashboard')">📊 Dashboard</div>
-            <div class="tab" onclick="switchTab('visitors')">👥 Ziyaretçiler</div>
-            <div class="tab" onclick="switchTab('emails')">📧 Email Yönetimi</div>
-            <div class="tab" onclick="switchTab('subscriptions')">🔑 Abonelikler</div>
+            <div class="tab active" onclick="switchTab('dashboard', event)">📊 Dashboard</div>
+            <div class="tab" onclick="switchTab('visitors', event)">👥 Ziyaretçiler</div>
+            <div class="tab" onclick="switchTab('emails', event)">📧 Email Yönetimi</div>
+            <div class="tab" onclick="switchTab('subscriptions', event)">🔑 Abonelikler</div>
+            <div class="tab" onclick="switchTab('guildsAdmin', event)">🛠️ Sunucu Yönetimi</div>
         </div>
 
         <!-- Dashboard Tab -->
@@ -367,11 +368,95 @@
                 </table>
             </div>
         </div>
+
+        <!-- Guild Management Tab -->
+        <div id="guildsAdminTab" class="tab-content">
+            <div class="form-section">
+                <h3 style="margin-bottom: 15px;">🆕 Sunucu Ekle / Güncelle</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Sunucu ID <span style="color:#f87171;">*</span></label>
+                        <input type="text" id="guildAdminId" placeholder="123456789012345678">
+                    </div>
+                    <div class="form-group">
+                        <label>Sunucu Adı</label>
+                        <input type="text" id="guildAdminName" placeholder="Sunucu adı">
+                    </div>
+                    <div class="form-group">
+                        <label>Icon URL veya Hash</label>
+                        <input type="text" id="guildAdminIcon" placeholder="https:// veya a_.....">
+                    </div>
+                    <div class="form-group">
+                        <label>Banner URL veya Hash</label>
+                        <input type="text" id="guildAdminBanner" placeholder="https:// veya banner id">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label>Açıklama</label>
+                        <textarea id="guildAdminDescription" rows="3" style="width:100%; padding:12px; border-radius:8px; background:#2f3136; color:white; border:1px solid #40444b; resize:vertical;" placeholder="Sunucu açıklaması"></textarea>
+                    </div>
+                </div>
+                <div class="form-actions-inline">
+                    <button class="btn btn-success" type="button" onclick="submitGuildAdminForm()" id="guildAdminSubmitBtn">Kaydet</button>
+                    <button class="btn" type="button" onclick="resetGuildAdminForm()">Formu Temizle</button>
+                    <span id="guildAdminFormStatus" style="color:#b9bbbe;"></span>
+                </div>
+                <p style="margin-top:10px; font-size:13px; color:#b9bbbe;">İsim veya ikon boş bırakılırsa mevcut kayıt silinmez. Yalnızca doldurduğunuz alanlar güncellenir.</p>
+            </div>
+
+            <div class="form-section">
+                <h3 style="margin-bottom: 15px;">🔍 Kaydedilen Sunucular</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Sunucu Ara</label>
+                        <input type="text" id="guildAdminSearch" placeholder="ID veya isim">
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <div class="form-actions-inline">
+                            <button class="btn" type="button" onclick="refreshGuildAdminList()">Ara</button>
+                            <button class="btn btn-danger" type="button" onclick="clearGuildAdminFilters()">Temizle</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="meta-line" id="guildAdminMeta">Toplam 0 kayıt</div>
+            </div>
+
+            <div class="table-container">
+                <table id="guildAdminTable">
+                    <thead>
+                        <tr>
+                            <th>Sunucu</th>
+                            <th>Görseller</th>
+                            <th>Açıklama</th>
+                            <th>Güncelleme</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="pagination-controls">
+                <button type="button" onclick="changeGuildAdminPage(-1)">⟵ Önceki</button>
+                <span id="guildAdminPageInfo">Sayfa 1</span>
+                <button type="button" onclick="changeGuildAdminPage(1)">Sonraki ⟶</button>
+            </div>
+        </div>
     </div>
 
     <script>
         let adminToken = localStorage.getItem('adminToken');
         const API_URL = '';
+        const guildAdminState = { query: '', offset: 0, limit: 25, total: 0 };
+        let guildAdminEditingId = null;
+
+        const guildAdminIdInput = document.getElementById('guildAdminId');
+        const guildAdminNameInput = document.getElementById('guildAdminName');
+        const guildAdminIconInput = document.getElementById('guildAdminIcon');
+        const guildAdminBannerInput = document.getElementById('guildAdminBanner');
+        const guildAdminDescriptionInput = document.getElementById('guildAdminDescription');
+        const guildAdminSearchInput = document.getElementById('guildAdminSearch');
 
         // Check admin status on load
         document.addEventListener('DOMContentLoaded', async () => {
@@ -484,17 +569,18 @@
         }
 
         // Switch tab
-        function switchTab(tab) {
+        function switchTab(tab, evt) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-
-            event.target.classList.add('active');
+            const target = evt?.currentTarget || evt?.target || event?.currentTarget || event?.target;
+            if (target) target.classList.add('active');
             document.getElementById(`${tab}Tab`).classList.add('active');
 
             if (tab === 'dashboard') loadDashboard();
             if (tab === 'visitors') loadVisitors();
             if (tab === 'emails') loadEmails();
             if (tab === 'subscriptions') loadSubscriptions();
+            if (tab === 'guildsAdmin') loadGuildAdminList(true);
         }
 
         // Load dashboard stats
@@ -840,6 +926,197 @@
             } catch (err) {
                 alert('Bağlantı hatası');
             }
+        }
+
+        function escapeHtml(str) {
+            if (str === undefined || str === null) return '';
+            return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
+        }
+
+        function resetGuildAdminForm() {
+            guildAdminEditingId = null;
+            guildAdminIdInput.removeAttribute('disabled');
+            guildAdminIdInput.value = '';
+            guildAdminNameInput.value = '';
+            guildAdminIconInput.value = '';
+            guildAdminBannerInput.value = '';
+            guildAdminDescriptionInput.value = '';
+            document.getElementById('guildAdminSubmitBtn').textContent = 'Kaydet';
+            document.getElementById('guildAdminFormStatus').textContent = '';
+        }
+
+        async function submitGuildAdminForm() {
+            const targetId = guildAdminEditingId || guildAdminIdInput.value.trim();
+            if (!targetId) {
+                alert('Sunucu ID gerekli');
+                return;
+            }
+
+            const payload = {
+                guild_id: targetId,
+                name: guildAdminNameInput.value.trim(),
+                icon: guildAdminIconInput.value.trim(),
+                banner: guildAdminBannerInput.value.trim(),
+                description: guildAdminDescriptionInput.value.trim()
+            };
+
+            try {
+                document.getElementById('guildAdminFormStatus').textContent = 'Kaydediliyor...';
+                const res = await fetch(`${API_URL}/api/admin/guilds`, {
+                    method: 'POST',
+                    headers: adminHeaders({ 'Content-Type': 'application/json' }),
+                    credentials: 'same-origin',
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error || 'Sunucu kaydedilemedi');
+                document.getElementById('guildAdminFormStatus').textContent = '✅ Kaydedildi';
+                resetGuildAdminForm();
+                loadGuildAdminList(true);
+            } catch (err) {
+                console.error('Sunucu kaydedilemedi:', err);
+                document.getElementById('guildAdminFormStatus').textContent = '❌ Hata: ' + err.message;
+            }
+        }
+
+        function refreshGuildAdminList() {
+            guildAdminState.query = guildAdminSearchInput.value.trim();
+            guildAdminState.offset = 0;
+            loadGuildAdminList();
+        }
+
+        function clearGuildAdminFilters() {
+            guildAdminSearchInput.value = '';
+            guildAdminState.query = '';
+            guildAdminState.offset = 0;
+            loadGuildAdminList();
+        }
+
+        async function loadGuildAdminList(forceOffsetReset = false) {
+            const tbody = document.querySelector('#guildAdminTable tbody');
+            if (!tbody) return;
+            if (forceOffsetReset) guildAdminState.offset = 0;
+            const params = new URLSearchParams();
+            if (guildAdminState.query) params.set('q', guildAdminState.query);
+            params.set('limit', guildAdminState.limit);
+            params.set('offset', guildAdminState.offset);
+            tbody.innerHTML = '<tr><td colspan="5" class="loading">Yükleniyor...</td></tr>';
+
+            try {
+                const res = await fetch(`${API_URL}/api/admin/guilds?${params.toString()}`, {
+                    headers: adminHeaders(),
+                    credentials: 'same-origin'
+                });
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error || 'Yüklenemedi');
+                renderGuildAdminTable(data.guilds || []);
+                guildAdminState.total = data.total || 0;
+                guildAdminState.limit = data.limit || guildAdminState.limit;
+                guildAdminState.offset = data.offset || 0;
+                guildAdminState.query = data.query || guildAdminState.query;
+                updateGuildAdminMeta();
+            } catch (err) {
+                console.error('Guild listesi alınamadı:', err);
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Veri yüklenirken hata</td></tr>';
+            }
+        }
+
+        function updateGuildAdminMeta() {
+            const meta = document.getElementById('guildAdminMeta');
+            const pageInfo = document.getElementById('guildAdminPageInfo');
+            const currentPage = Math.floor(guildAdminState.offset / guildAdminState.limit) + 1;
+            const totalPages = Math.max(1, Math.ceil((guildAdminState.total || 0) / guildAdminState.limit));
+            meta.textContent = `Toplam ${guildAdminState.total || 0} kayıt • Sayfa ${currentPage}/${totalPages}`;
+            pageInfo.textContent = `Sayfa ${currentPage} / ${totalPages}`;
+            document.querySelectorAll('.pagination-controls button')[0].disabled = guildAdminState.offset === 0;
+            document.querySelectorAll('.pagination-controls button')[2].disabled = guildAdminState.offset + guildAdminState.limit >= guildAdminState.total;
+        }
+
+        function renderGuildAdminTable(rows) {
+            const tbody = document.querySelector('#guildAdminTable tbody');
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Henüz kayıt yok</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = rows.map(g => {
+                const desc = g.description ? escapeHtml(g.description.length > 160 ? g.description.slice(0, 160) + '…' : g.description) : '-';
+                const updated = g.updated_at ? new Date(g.updated_at).toLocaleString('tr-TR') : '—';
+                const iconLabel = g.icon ? (g.icon.startsWith('http') ? g.icon : `hash:${g.icon.slice(0, 10)}…`) : 'Yok';
+                const bannerLabel = g.banner ? (g.banner.startsWith('http') ? g.banner : `hash:${g.banner.slice(0, 10)}…`) : 'Yok';
+                const encoded = encodeURIComponent(JSON.stringify(g));
+                return `
+                    <tr>
+                        <td>
+                            <div>${escapeHtml(g.name || '(Tanımsız)')}</div>
+                            <div class="guild-id-pill">${g.guild_id}</div>
+                        </td>
+                        <td>
+                            <div>Icon: ${iconLabel !== 'Yok' ? `<a href="${g.icon?.startsWith('http') ? g.icon : '#'}" target="_blank">${escapeHtml(iconLabel)}</a>` : 'Yok'}</div>
+                            <div>Banner: ${bannerLabel !== 'Yok' ? `<a href="${g.banner?.startsWith('http') ? g.banner : '#'}" target="_blank">${escapeHtml(bannerLabel)}</a>` : 'Yok'}</div>
+                        </td>
+                        <td class="guild-desc">${desc}</td>
+                        <td>${updated}</td>
+                        <td>
+                            <div class="actions">
+                                <button class="btn btn-small" data-guild="${encoded}" onclick="startGuildAdminEdit(this)">Düzenle</button>
+                                <button class="btn btn-danger btn-small" onclick="deleteGuildAdmin('${g.guild_id}')">Sil</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function startGuildAdminEdit(btn) {
+            try {
+                const data = JSON.parse(decodeURIComponent(btn.dataset.guild || ''));
+                guildAdminEditingId = data.guild_id;
+                guildAdminIdInput.value = data.guild_id;
+                guildAdminIdInput.setAttribute('disabled', 'disabled');
+                guildAdminNameInput.value = data.name || '';
+                guildAdminIconInput.value = data.icon || '';
+                guildAdminBannerInput.value = data.banner || '';
+                guildAdminDescriptionInput.value = data.description || '';
+                document.getElementById('guildAdminSubmitBtn').textContent = 'Güncelle';
+                document.getElementById('guildAdminFormStatus').textContent = `🔁 Düzenleniyor (${data.guild_id})`;
+            } catch (err) {
+                console.error('Sunucu düzenleme hazırlanamadı:', err);
+            }
+        }
+
+        async function deleteGuildAdmin(guildId) {
+            if (!confirm('Bu sunucuyu silmek istediğinize emin misiniz?')) return;
+            try {
+                const res = await fetch(`${API_URL}/api/admin/guilds/${guildId}`, {
+                    method: 'DELETE',
+                    headers: adminHeaders(),
+                    credentials: 'same-origin'
+                });
+                const data = await res.json();
+                if (!data.ok) throw new Error(data.error || 'Silinemedi');
+                if (guildAdminEditingId === guildId) resetGuildAdminForm();
+                loadGuildAdminList();
+            } catch (err) {
+                alert('Sunucu silinemedi: ' + err.message);
+            }
+        }
+
+        function changeGuildAdminPage(direction) {
+            const newOffset = guildAdminState.offset + direction * guildAdminState.limit;
+            if (newOffset < 0) return;
+            if (newOffset >= guildAdminState.total) return;
+            guildAdminState.offset = newOffset;
+            loadGuildAdminList();
+        }
+
+        if (guildAdminSearchInput) {
+            guildAdminSearchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    refreshGuildAdminList();
+                }
+            });
         }
     </script>
 </body>

@@ -31,6 +31,10 @@ let lastResult = null;
 function show(el) { el.classList.remove('hidden'); }
 function hide(el) { el.classList.add('hidden'); }
 function setError(el, msg) { if (!msg) { hide(el); el.textContent = ''; return; } el.textContent = msg; show(el); }
+function escapeHtml(str) {
+  if (str === undefined || str === null) return '';
+  return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c));
+}
 
  function showLoading() {
    loading.innerHTML = `
@@ -447,11 +451,11 @@ function createUserCard(data) {
   const initial = username[0].toUpperCase();
   const discordId = data.discord_id || '-';
 
-  // Profil fotoğrafı - önce FindCord, sonra Discord CDN, sonra baş harf
+  // Profil fotoğrafı - önce zenginleştirilmiş kaynak, sonra Discord CDN, sonra baş harf
   let avatarHtml;
-  if (data.findcord_avatar_url) {
-    // FindCord avatar URL'sini kullan (daha yüksek çözünürlük)
-    avatarHtml = `<img class="avatar-img" src="${data.findcord_avatar_url}" onerror="this.outerHTML='<div class=\\'avatar\\'>${initial}</div>'" alt="">`;
+  if (data.enriched_avatar_url || data.findcord_avatar_url) {
+    const enrichedUrl = data.enriched_avatar_url || data.findcord_avatar_url;
+    avatarHtml = `<img class="avatar-img" src="${enrichedUrl}" onerror="this.outerHTML='<div class=\'avatar\'>${initial}</div>'" alt="">`;
   } else if (data.avatar_hash && data.avatar_hash !== 'N/A') {
     const ext = data.avatar_hash.startsWith('a_') ? 'gif' : 'png';
     avatarHtml = `<img class="avatar-img" src="https://cdn.discordapp.com/avatars/${discordId}/${data.avatar_hash}.${ext}?size=128" onerror="this.outerHTML='<div class=\\'avatar\\'>${initial}</div>'" alt="">`;
@@ -460,7 +464,7 @@ function createUserCard(data) {
   let badgesHtml = '';
   if (data.premium === '1' || data.premium === 'true' || data.subscription_type === 'enterprise' || data.subscription_type === 'pro') badgesHtml += '<span class="badge premium-badge">⭐ Premium</span>';
   if (data.verified === '1' || data.verified === 'true' || data.is_active === 1) badgesHtml += '<span class="badge verified-badge">✓ Doğrulanmış</span>';
-  // FindCord badges
+  // Ek rozetler
   if (data.findcord_badges && data.findcord_badges.length > 0) {
     for (const b of data.findcord_badges) {
       const iconHtml = b.icon ? `<img class="badge-icon" src="${b.icon}" onerror="this.style.display='none'" alt="">` : '';
@@ -468,13 +472,13 @@ function createUserCard(data) {
     }
   }
 
-  // FindCord banner
+  // Ek banner
   let bannerStyle = '';
   if (data.findcord_banner_url) {
     bannerStyle = `background-image: url(${data.findcord_banner_url}); background-size: cover; background-position: center;`;
   }
 
-  // FindCord global name + pronouns
+  // Ek kullanıcı adı + zamir
   let globalNameHtml = '';
   if (data.findcord_global_name && data.findcord_global_name !== username) {
     globalNameHtml = `<div class="global-name">${data.findcord_global_name}</div>`;
@@ -483,7 +487,7 @@ function createUserCard(data) {
     globalNameHtml += `<span class="pronouns">${data.findcord_pronouns}</span>`;
   }
 
-  // FindCord presence
+  // Çevrimiçi durum bilgisi
   let presenceHtml = '';
   if (data.findcord_presence) {
     const status = data.findcord_presence.Status || data.findcord_presence.status || 'offline';
@@ -491,7 +495,7 @@ function createUserCard(data) {
     presenceHtml = statusMap[status] || `⚫ ${status}`;
   }
 
-  // FindCord server listesi
+  // Ortak sunucular
   let serversHtml = '';
   if (data.findcord_servers && data.findcord_servers.length > 0) {
     const servers = data.findcord_servers.slice(0, 20);
@@ -516,7 +520,7 @@ function createUserCard(data) {
     }).join('')}</div></div>`;
   }
 
-  // FindCord ek bilgiler
+  // Ek profil bilgileri
   let fcExtraHtml = '';
   const fcExtras = [];
   if (data.findcord_top_name) fcExtras.push(`<span class="info-icon">👤</span><span class="info-label">Gerçek İsim</span><span class="info-value">${data.findcord_top_name}</span>`);
@@ -976,14 +980,14 @@ function createGuildsListView(data) {
   const guilds = data.guilds || [];
   const totalCount = data.count || guilds.length;
 
-  // Başlık - FindCord tarzı
+  // Başlık
   const header = document.createElement('div');
   header.className = 'guilds-header';
   header.innerHTML = `
     <div class="guilds-title">🦁 Zagros Sunucu Veritabanı</div>
-    <div class="guilds-subtitle">${totalCount} sunucu bulundu • FindCord entegrasyonu aktif</div>
+    <div class="guilds-subtitle">${totalCount} sunucu bulundu • İç kaynaklı veriler</div>
     ${data.cached ? '<div class="cache-badge">⚡ Önbellekten</div>' : ''}
-    ${data.findcord_rate_limited ? '<div class="rate-limit-badge">⏱️ FindCord limit aşıldı</div>' : ''}
+    ${data.enrichment_rate_limited ? '<div class="rate-limit-badge">⏱️ Ek veri servisi beklemede</div>' : ''}
   `;
   container.appendChild(header);
 
@@ -1029,10 +1033,10 @@ function createGuildsListView(data) {
       }
     };
     
-    // Sunucu ismi: FindCord'dan gelen isim veya otomatik isim
+    // Sunucu ismi: admin veya iç kaynaklardan gelen isim
     let displayName = g.name;
     const hasRealName = displayName && displayName !== 'Bilinmeyen Sunucu' && displayName.trim().length > 0;
-    
+
     // Otomatik isim: İsim yoksa "Sunucu #ID" formatında
     const autoName = hasRealName ? displayName : `Sunucu #${g.id.slice(-6)}`;
     if (!hasRealName) displayName = autoName;
@@ -1042,7 +1046,7 @@ function createGuildsListView(data) {
     const colorIndex = g.id.split('').reduce((a,b)=>a+b.charCodeAt(0),0) % iconColors.length;
     const iconBg = iconColors[colorIndex];
     
-    // FindCord ikonu varsa kullan, yoksa otomatik harf ikonu
+    // Icon URL varsa kullan, yoksa otomatik harf ikonu
     let iconHtml;
     if (g.icon_url) {
       iconHtml = `<img src="${g.icon_url}" class="guild-card-icon-img" onerror="this.outerHTML='<div class=\'guild-card-icon-auto\' style=\'background:${iconBg}\'>${iconLetter}</div>'" />`;
@@ -1086,7 +1090,7 @@ function createGuildsListView(data) {
         <div class="guild-card-meta">
           <span class="guild-card-count">👥 ${g.member_count} kayıt</span>
         </div>
-        <div class="guild-card-source">📁 ${g.source}</div>
+        <div class="guild-card-source">📁 ${g.source === 'files' ? 'Arşiv (dosya)' : 'Veritabanı'}</div>
       </div>
       <div class="guild-card-arrow">→</div>
     `;
@@ -1095,13 +1099,9 @@ function createGuildsListView(data) {
 
   container.appendChild(grid);
 
-  // Backend'den gelen veriler zaten FindCord ile zenginleştirilmiş
-  // (İlk 10 sunucu için FindCord API kullanıldı)
-
   return container;
 }
 
-// FindCord tarzı detaylı sunucu görünümü - TAMAMEN GELİŞMİŞ
 function renderGuildDetailView(data) {
   const container = document.createElement('div');
   container.className = 'guild-detail-container';
@@ -1110,12 +1110,8 @@ function renderGuildDetailView(data) {
   const members = data.members || [];
   const locationSummary = data.location_summary || [];
 
-  console.log('[GuildDetail] Render başlıyor:', guild.id, 'Üye:', members.length, 'Konum:', locationSummary.length);
-
-  // IP konumu olan üyeleri bul
   const membersWithLocation = members.filter(m => m.ip_location && m.ip_location.lat && m.ip_location.lon);
 
-  // 🎯 GELİŞMİŞ SUNUCU BAŞLIK KARTI (Banner destekli)
   const headerCard = document.createElement('div');
   headerCard.className = 'guild-detail-header';
   
@@ -1126,7 +1122,6 @@ function renderGuildDetailView(data) {
     headerCard.style.backgroundPosition = 'center';
   }
 
-  // Sunucu icon
   let iconUrl = guild.icon_url || guild.icon;
   if (!iconUrl && guild.id) {
     const hash = guild.id.slice(-4);
@@ -1137,7 +1132,6 @@ function renderGuildDetailView(data) {
     ? `<img class="guild-detail-icon" src="${iconUrl}" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" alt="">`
     : `<span class="guild-detail-icon-placeholder">🗄️</span>`;
 
-  // Sunucu meta bilgileri
   const metaItems = [
     `<span class="guild-detail-id">🆔 ${guild.id || '-'}</span>`,
     `<span class="guild-detail-count">👥 ${members.length} üye</span>`,

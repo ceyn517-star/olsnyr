@@ -16,6 +16,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const DATABASE_URL = process.env.DATABASE_URL;
+const ONLY_SQL = process.env.ONLY_SQL ? process.env.ONLY_SQL.split(',').map(s => s.trim()).filter(Boolean) : null;
+const SKIP_TXT = process.env.SKIP_TXT === '1' || process.env.SKIP_TXT === 'true';
 if (!DATABASE_URL) {
   console.error('❌ DATABASE_URL ortam değişkeni gerekli!');
   console.error('Örnek: DATABASE_URL=postgresql://user:pass@host:5432/dbname node import_data.js');
@@ -38,7 +40,7 @@ async function createSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
-      discord_id VARCHAR(20) NOT NULL,
+      discord_id VARCHAR(30) NOT NULL,
       username VARCHAR(100),
       discriminator VARCHAR(10),
       email VARCHAR(255),
@@ -57,14 +59,14 @@ async function createSchema() {
 
     CREATE TABLE IF NOT EXISTS user_guilds (
       id SERIAL PRIMARY KEY,
-      discord_id VARCHAR(20) NOT NULL,
-      guild_id VARCHAR(20) NOT NULL,
+      discord_id VARCHAR(30) NOT NULL,
+      guild_id VARCHAR(30) NOT NULL,
       source VARCHAR(100)
     );
 
     CREATE TABLE IF NOT EXISTS query_logs (
       id SERIAL PRIMARY KEY,
-      discord_id VARCHAR(20),
+      discord_id VARCHAR(30),
       email VARCHAR(255),
       ip VARCHAR(45),
       username VARCHAR(100),
@@ -75,7 +77,7 @@ async function createSchema() {
     );
 
     CREATE TABLE IF NOT EXISTS guild_cache (
-      guild_id VARCHAR(20) PRIMARY KEY,
+      guild_id VARCHAR(30) PRIMARY KEY,
       name VARCHAR(255),
       icon VARCHAR(255),
       banner VARCHAR(255),
@@ -218,7 +220,10 @@ async function importSqlFile(sqlPath) {
   let detailCount = 0;
   let currentTable = null;
   let batch = [];
-  const batchSize = 200;
+  let detailBatch = [];
+  let guildBatch = [];
+  let logBatch = [];
+  const batchSize = 500;
 
   for await (const line of rl) {
     // Detect INSERT INTO table
@@ -330,30 +335,24 @@ async function importSqlFile(sqlPath) {
           if (/^[0-9a-f]{1,4}(:[0-9a-f]{1,4}){2,7}$/i.test(v)) { ip = v; break; }
         }
 
-        // Insert user data
-        await pool.query(
-          `INSERT INTO users (discord_id, email, last_ip, connections, source) VALUES ($1, $2, $3, $4, $5)`,
-          [discord_id, email !== 'null' ? email : null, ip, JSON.stringify(connections), fileName + '_detail']
-        );
+        detailBatch.push({ discord_id, email: email !== 'null' ? email : null, ip, connections: JSON.stringify(connections), source: fileName + '_detail' });
         detailCount++;
 
-        // Insert guild memberships
-        if (guilds.length > 0) {
-          const guildValues = [];
-          const guildParams = [];
-          let pi = 1;
-          for (const gid of guilds) {
-            guildValues.push(`($${pi++}, $${pi++}, $${pi++})`);
-            guildParams.push(discord_id, String(gid), fileName);
-          }
-          await pool.query(
-            `INSERT INTO user_guilds (discord_id, guild_id, source) VALUES ${guildValues.join(',')}`,
-            guildParams
-          );
+        for (const gid of guilds) {
+          guildBatch.push({ discord_id, guild_id: String(gid), source: fileName });
+        }
+
+        if (detailBatch.length >= batchSize) {
+          await flushDetailBatch(detailBatch);
+          detailBatch = [];
+        }
+        if (guildBatch.length >= batchSize) {
+          await flushGuildBatch(guildBatch);
+          guildBatch = [];
         }
       }
 
-      if (detailCount % 1000 === 0 && detailCount > 0) {
+      if (detailCount % 2000 === 0 && detailCount > 0) {
         process.stdout.write(`\r   users_detail: ${detailCount}`);
       }
     }
@@ -379,24 +378,25 @@ async function importSqlFile(sqlPath) {
         // Skip hash IPs
         if (ip && /^[a-f0-9]{32}$/.test(ip)) ip = null;
 
-        await pool.query(
-          `INSERT INTO query_logs (discord_id, email, ip, username, avatar_hash, source) VALUES ($1, $2, $3, $4, $5, $6)`,
-          [discord_id, email, ip, username, avatar_hash, fileName]
-        );
+        logBatch.push({ discord_id, email, ip, username, avatar_hash, source: fileName });
         queryLogsCount++;
 
-        if (queryLogsCount % 1000 === 0) {
+        if (logBatch.length >= batchSize) {
+          await flushLogBatch(logBatch);
+          logBatch = [];
+        }
+        if (queryLogsCount % 2000 === 0) {
           process.stdout.write(`\r   query_logs: ${queryLogsCount}`);
         }
       }
     }
   }
 
-  // Flush remaining users batch
-  if (batch.length > 0) {
-    await flushUsersBatch(batch);
-    usersCount += batch.length;
-  }
+  // Flush remaining batches
+  if (batch.length > 0) { await flushUsersBatch(batch); usersCount += batch.length; }
+  if (detailBatch.length > 0) { await flushDetailBatch(detailBatch); }
+  if (guildBatch.length > 0) { await flushGuildBatch(guildBatch); }
+  if (logBatch.length > 0) { await flushLogBatch(logBatch); }
 
   rl.close();
   rs.close();
@@ -410,14 +410,57 @@ async function flushUsersBatch(batch) {
   const values = [];
   const params = [];
   let pi = 1;
-
   for (const u of batch) {
     values.push(`($${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++})`);
     params.push(u.discord_id, u.username, u.discriminator, u.email, u.avatar_hash, u.reg_ip, u.last_ip, u.source);
   }
-
   await pool.query(
     `INSERT INTO users (discord_id, username, discriminator, email, avatar_hash, registration_ip, last_ip, source) VALUES ${values.join(',')}`,
+    params
+  );
+}
+
+async function flushDetailBatch(batch) {
+  if (batch.length === 0) return;
+  const values = [];
+  const params = [];
+  let pi = 1;
+  for (const u of batch) {
+    values.push(`($${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++})`);
+    params.push(u.discord_id, u.email, u.ip, u.connections, u.source);
+  }
+  await pool.query(
+    `INSERT INTO users (discord_id, email, last_ip, connections, source) VALUES ${values.join(',')}`,
+    params
+  );
+}
+
+async function flushGuildBatch(batch) {
+  if (batch.length === 0) return;
+  const values = [];
+  const params = [];
+  let pi = 1;
+  for (const g of batch) {
+    values.push(`($${pi++}, $${pi++}, $${pi++})`);
+    params.push(g.discord_id, g.guild_id, g.source);
+  }
+  await pool.query(
+    `INSERT INTO user_guilds (discord_id, guild_id, source) VALUES ${values.join(',')}`,
+    params
+  );
+}
+
+async function flushLogBatch(batch) {
+  if (batch.length === 0) return;
+  const values = [];
+  const params = [];
+  let pi = 1;
+  for (const l of batch) {
+    values.push(`($${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++}, $${pi++})`);
+    params.push(l.discord_id, l.email, l.ip, l.username, l.avatar_hash, l.source);
+  }
+  await pool.query(
+    `INSERT INTO query_logs (discord_id, email, ip, username, avatar_hash, source) VALUES ${values.join(',')}`,
     params
   );
 }
@@ -482,10 +525,14 @@ async function main() {
   let totalRecords = 0;
 
   // 1. TXT dosyası
-  totalRecords += await importTxtFile();
+  if (!SKIP_TXT) {
+    totalRecords += await importTxtFile();
+  } else {
+    console.log('⏭️  TXT importu atlandı (SKIP_TXT=1)');
+  }
 
   // 2. SQL dosyaları
-  const sqlFiles = ['za.sql', 'zagros.sql', 'zagrs.sql'];
+  const sqlFiles = ONLY_SQL || ['za.sql', 'zagros.sql', 'zagrs.sql'];
   for (const sqlFile of sqlFiles) {
     const sqlPath = path.join(DATA_DIR, sqlFile);
     if (fs.existsSync(sqlPath)) {
