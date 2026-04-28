@@ -1629,6 +1629,197 @@ async function fetchDiscordServersInfo(guildId) {
   return null;
 }
 
+// Discadia.com'dan sunucu bilgisi çek
+async function fetchDiscadiaInfo(guildId) {
+  try {
+    const res = await axios.get(`https://discadia.com/server/${guildId}`, {
+      timeout: 5000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    const html = res.data;
+    
+    // Sunucu ismi - meta title veya h1
+    let name = null;
+    const titleMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i);
+    if (titleMatch) {
+      name = titleMatch[1].trim();
+    }
+    if (!name) {
+      const h1Match = html.match(/<h1[^>]*class="[^"]*server-name[^"]*"[^>]*>([^<]+)<\/h1>/i) ||
+                      html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+      if (h1Match) name = h1Match[1].trim();
+    }
+    
+    // Açıklama
+    let description = null;
+    const descMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i) ||
+                      html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
+    if (descMatch) {
+      description = descMatch[1].trim().slice(0, 500);
+    }
+    
+    // İkon - og:image veya server icon
+    let icon = null;
+    const iconMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i) ||
+                      html.match(/<img[^>]*class="[^"]*server-icon[^"]*"[^>]*src="([^"]+)"/i) ||
+                      html.match(/<img[^>]*class="[^"]*avatar[^"]*"[^>]*src="([^"]+)"/i);
+    if (iconMatch) {
+      icon = iconMatch[1];
+      if (!icon.startsWith('http')) {
+        icon = `https://discadia.com${icon}`;
+      }
+    }
+    
+    // Banner - büyük arka plan resmi
+    let banner = null;
+    const bannerMatch = html.match(/<div[^>]*class="[^"]*banner[^"]*"[^>]*style="[^"]*background[^"]*url\(([^)]+)\)/i) ||
+                        html.match(/background-image:\s*url\(['"]?([^'"]+)['"]?\)/i) ||
+                        html.match(/<img[^>]*class="[^"]*banner[^"]*"[^>]*src="([^"]+)"/i);
+    if (bannerMatch) {
+      banner = bannerMatch[1].replace(/['"]/g, '');
+      if (!banner.startsWith('http')) {
+        banner = `https://discadia.com${banner}`;
+      }
+    }
+    
+    if (!name) return null;
+    
+    return {
+      name,
+      icon,
+      banner,
+      description,
+      source: 'discadia'
+    };
+  } catch (err) {
+    console.log(`[Discadia] Hata ${guildId}:`, err.message);
+  }
+  return null;
+}
+
+// Disboard.org tag sayfasından sunucu listesi çek
+async function fetchDisboardTagList(tag = 'türk') {
+  try {
+    const res = await axios.get(`https://disboard.org/tr/servers/tag/${encodeURIComponent(tag)}`, {
+      timeout: 8000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9'
+      }
+    });
+    const html = res.data;
+    const servers = [];
+    
+    // Sunucu kartlarını bul - data-id attribute'ü ile
+    const serverBlocks = [...html.matchAll(/<li[^>]*data-id="(\d+)"[^>]*>[\s\S]*?<\/li>/gi)];
+    
+    for (const blockMatch of serverBlocks.slice(0, 20)) {
+      const block = blockMatch[0];
+      const id = blockMatch[1];
+      
+      // İsim
+      const nameMatch = block.match(/<h3[^>]*>([^<]+)<\/h3>/i);
+      const name = nameMatch?.[1]?.trim();
+      
+      // İkon
+      const iconMatch = block.match(/data-background-image="([^"]+)"/i) ||
+                       block.match(/data-src="([^"]+)"/i) ||
+                       block.match(/src="([^"]+\.(?:png|jpg|jpeg|gif|webp))"/i);
+      let icon = iconMatch?.[1];
+      if (icon && !icon.startsWith('http')) {
+        icon = `https://disboard.org${icon}`;
+      }
+      
+      // Açıklama
+      const descMatch = block.match(/<p[^>]*class="[^"]*description[^"]*"[^>]*>([\s\S]*?)<\/p>/i) ||
+                        block.match(/<div[^>]*class="[^"]*desc[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+      const description = descMatch ? stripHtml(descMatch[1]).slice(0, 200) : null;
+      
+      if (id && name) {
+        servers.push({
+          id,
+          name,
+          icon,
+          description,
+          source: 'disboard_tag'
+        });
+        // Cache'e ekle
+        rememberGuildName(id, name);
+      }
+    }
+    
+    console.log(`[Disboard Tag] ${servers.length} sunucu bulundu`);
+    return servers;
+  } catch (err) {
+    console.log(`[Disboard Tag] Hata:`, err.message);
+    return [];
+  }
+}
+
+// Discadia.com'dan sunucu listesi çek
+async function fetchDiscadiaList(query = 'türk public') {
+  try {
+    const res = await axios.get(`https://discadia.com/?q=${encodeURIComponent(query)}`, {
+      timeout: 8000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    const html = res.data;
+    const servers = [];
+    
+    // Sunucu kartlarını bul
+    const serverBlocks = [...html.matchAll(/<a[^>]*href="\/server\/(\d+)"[^>]*>[\s\S]*?<\/a>/gi)];
+    
+    for (const blockMatch of serverBlocks.slice(0, 20)) {
+      const block = blockMatch[0];
+      const id = blockMatch[1];
+      
+      // İsim
+      const nameMatch = block.match(/<h[23][^>]*>([^<]+)<\/h[23]>/i) ||
+                       block.match(/<div[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/div>/i) ||
+                       block.match(/title="([^"]+)"/i);
+      const name = nameMatch?.[1]?.trim();
+      
+      // İkon
+      const iconMatch = block.match(/<img[^>]*src="([^"]+\.(?:png|jpg|jpeg|gif|webp)[^"]*)"/i) ||
+                       block.match(/<img[^>]*data-src="([^"]+)"/i);
+      let icon = iconMatch?.[1];
+      if (icon && !icon.startsWith('http')) {
+        icon = `https://discadia.com${icon}`;
+      }
+      
+      // Açıklama
+      const descMatch = block.match(/<p[^>]*>([^<]+)<\/p>/i) ||
+                        block.match(/<div[^>]*class="[^"]*desc[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+      const description = descMatch ? stripHtml(descMatch[1]).slice(0, 200) : null;
+      
+      if (id && name) {
+        servers.push({
+          id,
+          name,
+          icon,
+          description,
+          source: 'discadia_list'
+        });
+        // Cache'e ekle
+        rememberGuildName(id, name);
+      }
+    }
+    
+    console.log(`[Discadia List] ${servers.length} sunucu bulundu`);
+    return servers;
+  } catch (err) {
+    console.log(`[Discadia List] Hata:`, err.message);
+    return [];
+  }
+}
+
 // Tüm kaynaklardan sunucu ismi çözümle - tüm metadata'yı döndür
 async function resolveGuildName(guildId) {
   const guildIdStr = String(guildId);
@@ -1683,6 +1874,20 @@ async function resolveGuildName(guildId) {
       banner: discordservers.banner,
       description: discordservers.description,
       source: 'discordservers'
+    };
+  }
+
+  // 5. Discadia.com - isim, icon, banner, description
+  const discadia = await fetchDiscadiaInfo(guildIdStr);
+  if (discadia?.name) {
+    rememberGuildName(guildIdStr, discadia.name);
+    return {
+      id: guildIdStr,
+      name: discadia.name,
+      icon: discadia.icon,
+      banner: discadia.banner,
+      description: discadia.description,
+      source: 'discadia'
     };
   }
 
@@ -4434,6 +4639,57 @@ app.post('/api/reload-sources', (req, res) => {
   guildsCache = null;
   guildsCacheTime = 0;
   return res.json({ ok: true, detected });
+});
+
+// Dış kaynaklardan sunucu listesi çek ve mevcutlarla birleştir
+app.get('/api/guilds/discover', async (req, res) => {
+  try {
+    console.log('[Guilds Discover] Dış kaynaklardan sunucu listesi çekiliyor...');
+    
+    // Paralel olarak tüm kaynaklardan çek
+    const [disboardServers, discadiaServers] = await Promise.allSettled([
+      fetchDisboardTagList('türk'),
+      fetchDiscadiaList('türk public')
+    ]);
+    
+    const externalServers = [];
+    
+    if (disboardServers.status === 'fulfilled' && disboardServers.value) {
+      externalServers.push(...disboardServers.value);
+    }
+    if (discadiaServers.status === 'fulfilled' && discadiaServers.value) {
+      externalServers.push(...discadiaServers.value);
+    }
+    
+    // Tekrarları kaldır (aynı ID'li sunucuları birleştir)
+    const uniqueServers = new Map();
+    for (const server of externalServers) {
+      const existing = uniqueServers.get(server.id);
+      if (!existing) {
+        uniqueServers.set(server.id, server);
+      } else {
+        // Metadata'yı birleştir
+        if (!existing.icon && server.icon) existing.icon = server.icon;
+        if (!existing.banner && server.banner) existing.banner = server.banner;
+        if (!existing.description && server.description) existing.description = server.description;
+        if (server.source && !existing.source.includes(server.source)) {
+          existing.source = `${existing.source},${server.source}`;
+        }
+      }
+    }
+    
+    const servers = Array.from(uniqueServers.values());
+    console.log(`[Guilds Discover] ${servers.length} benzersiz sunucu bulundu`);
+    
+    return res.json({
+      ok: true,
+      count: servers.length,
+      servers: servers.slice(0, 50) // En fazla 50 sunucu döndür
+    });
+  } catch (err) {
+    console.error('[Guilds Discover] Hata:', err);
+    return res.status(500).json({ error: 'Failed to fetch external servers' });
+  }
 });
 
 app.get('/api/guilds', async (req, res) => {

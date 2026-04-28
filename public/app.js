@@ -984,8 +984,11 @@ function createGuildsListView(data) {
     directory: 'Sunucu Dizini',
     widget: 'Discord Widget',
     disboard: 'Disboard',
+    'disboard_tag': 'Disboard (Türk)',
     topgg: 'Top.gg',
     discordservers: 'DiscordServers',
+    discadia: 'Discadia',
+    'discadia_list': 'Discadia (Liste)',
     cache: 'Önbellek',
     files: 'Arşiv',
     external_resolver: 'Dış Kaynak'
@@ -1139,8 +1142,11 @@ function renderGuildDetailView(data) {
     directory: 'Sunucu Dizini',
     widget: 'Discord Widget',
     disboard: 'Disboard',
+    'disboard_tag': 'Disboard (Türk)',
     topgg: 'Top.gg',
     discordservers: 'DiscordServers',
+    discadia: 'Discadia',
+    'discadia_list': 'Discadia (Liste)',
     cache: 'Önbellek',
     files: 'Arşiv'
   };
