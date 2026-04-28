@@ -752,6 +752,165 @@ button.ghost {
   color: #8b9bff;
 }
 
+/* Yeni Sunucu Kart Stilleri */
+.guild-card-banner {
+  width: 100%;
+  height: 80px;
+  background-size: cover;
+  background-position: center;
+  border-radius: 12px 12px 0 0;
+  margin-bottom: 12px;
+  position: relative;
+}
+
+.guild-card-banner::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(to bottom, transparent, rgba(17, 17, 27, 0.8));
+  border-radius: 0 0 12px 12px;
+}
+
+.guild-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  margin-bottom: 12px;
+}
+
+.guild-card-title-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.guild-card-icon-auto {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.copy-id-btn {
+  background: rgba(139, 155, 255, 0.15);
+  border: 1px solid rgba(139, 155, 255, 0.3);
+  color: #8b9bff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.copy-id-btn:hover {
+  background: rgba(139, 155, 255, 0.3);
+  transform: scale(1.05);
+}
+
+.guild-card-body {
+  padding: 0 16px 16px;
+}
+
+.guild-card-chip.source {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.2), rgba(139, 155, 255, 0.15));
+  color: #a78bfa;
+  border: 1px solid rgba(124, 58, 237, 0.3);
+}
+
+/* Premium Banner */
+.premium-banner {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05));
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.premium-banner-icon {
+  width: 56px;
+  height: 56px;
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.premium-banner-content {
+  flex: 1;
+}
+
+.premium-banner-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fbbf24;
+  margin-bottom: 4px;
+}
+
+.premium-banner-text {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.premium-banner-btn {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  color: #0f0f23;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.premium-banner-btn:hover {
+  transform: scale(1.05);
+}
+
+/* Hızlı Kopyalama Butonları */
+.quick-copy-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.quick-copy-btn {
+  background: rgba(124, 58, 237, 0.15);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  color: #a78bfa;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.quick-copy-btn:hover {
+  background: rgba(124, 58, 237, 0.3);
+  transform: translateY(-1px);
+}
+
 /* Sunucu Sorgu Stilleri */
 .guild-container {
   display: flex;

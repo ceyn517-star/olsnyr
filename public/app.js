@@ -996,6 +996,19 @@ function createGuildsListView(data) {
     external_resolver: 'Dış Kaynak'
   };
 
+  // Premium Banner
+  const premiumBanner = document.createElement('div');
+  premiumBanner.className = 'premium-banner';
+  premiumBanner.innerHTML = `
+    <div class="premium-banner-icon">👑</div>
+    <div class="premium-banner-content">
+      <div class="premium-banner-title">Zagros Premium</div>
+      <div class="premium-banner-text">Premium üyelik ile tüm sunucu verilerine, API erişimine ve özel özelliklere sahip olun. ID: 810571889936171028 (ceyn) ile iletişime geçin.</div>
+    </div>
+    <button class="premium-banner-btn" onclick="showToast('Premium bilgisi: Discord ID 810571889936171028 (ceyn)', 'info')">Premium Al</button>
+  `;
+  container.appendChild(premiumBanner);
+
   // Başlık
   const header = document.createElement('div');
   header.className = 'guilds-header';
@@ -1082,7 +1095,7 @@ function createGuildsListView(data) {
         const fallbackUrl = `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
         const initial = (m.username || 'U')[0].toUpperCase();
         return avatarUrl 
-          ? `<img src="${avatarUrl}" class="member-avatar" onerror="this.src='${fallbackUrl}'" title="${m.username || 'İsimsiz'}" alt="${initial}">`
+          ? `<img src="${avatarUrl}" class="member-avatar" onerror="this.src='${fallbackUrl}'" title="${m.username || 'İsimsiz'}" alt="${initial}" loading="lazy">`
           : `<div class="member-avatar-placeholder" title="${m.username || 'İsimsiz'}">${initial}</div>`;
       }).join('');
       
@@ -1097,11 +1110,17 @@ function createGuildsListView(data) {
       `;
     }
     
+    // Banner varsa göster (kart üstünde)
+    let bannerHtml = '';
+    if (g.banner_url) {
+      bannerHtml = `<div class="guild-card-banner" style="background-image:url('${g.banner_url}')"></div>`;
+    }
+    
     const descText = g.description ? escapeHtml(g.description.length > 160 ? `${g.description.slice(0, 160)}…` : g.description) : '';
     const descHtml = descText ? `<div class="guild-card-desc">${descText}</div>` : '';
     const chipItems = [];
     if (g.metadata_source && sourceLabels[g.metadata_source]) {
-      chipItems.push(`<span class="guild-card-chip">${sourceLabels[g.metadata_source]}</span>`);
+      chipItems.push(`<span class="guild-card-chip source">${sourceLabels[g.metadata_source]}</span>`);
     }
     if (g.metadata_updated_at) {
       const updatedStr = new Date(g.metadata_updated_at).toLocaleDateString('tr-TR');
@@ -1109,17 +1128,26 @@ function createGuildsListView(data) {
     }
     const chipsHtml = chipItems.length ? `<div class="guild-card-chips">${chipItems.join('')}</div>` : '';
 
+    // ID kopyalama butonu
+    const copyIdHtml = `<button class="copy-id-btn" onclick="event.stopPropagation(); navigator.clipboard.writeText('${g.id}'); showToast('ID kopyalandı: ${g.id}', 'success');" title="ID Kopyala">📋</button>`;
+
     card.innerHTML = `
-      ${iconHtml}
-      <div class="guild-card-info">
-        <div class="guild-card-name">${displayName}</div>
-        ${!hasRealName ? `<div class="guild-id-hint">🔍 ${shortId}</div>` : ''}
+      ${bannerHtml}
+      <div class="guild-card-header">
+        ${iconHtml}
+        <div class="guild-card-title-wrap">
+          <div class="guild-card-name">${displayName}</div>
+          ${!hasRealName ? `<div class="guild-id-hint">🔍 ${shortId}</div>` : ''}
+        </div>
+        ${copyIdHtml}
+      </div>
+      <div class="guild-card-body">
         ${membersHtml}
         ${descHtml}
         <div class="guild-card-meta">
-          <span class="guild-card-count">👥 ${g.member_count} kayıt</span>
+          <span class="guild-card-count">👥 ${g.member_count?.toLocaleString('tr-TR') || 0} kayıt</span>
+          <span class="guild-card-source">📁 ${g.source === 'files' ? 'Arşiv' : 'Veritabanı'}</span>
         </div>
-        <div class="guild-card-source">📁 ${g.source === 'files' ? 'Arşiv (dosya)' : 'Veritabanı'}</div>
         ${chipsHtml}
       </div>
       <div class="guild-card-arrow">→</div>
@@ -1173,9 +1201,24 @@ function renderGuildDetailView(data) {
     iconUrl = `https://cdn.discordapp.com/embed/avatars/${parseInt(hash, 16) % 5}.png`;
   }
 
+  // Kopyalama fonksiyonları
+  const copyToClipboard = (text, label) => {
+    navigator.clipboard.writeText(text).then(() => showToast(`${label} kopyalandı`, 'success'));
+  };
+
   const iconHtml = iconUrl 
-    ? `<img class="guild-detail-icon" src="${iconUrl}" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" alt="">`
+    ? `<img class="guild-detail-icon" src="${iconUrl}" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" alt="" onclick="window.open('${iconUrl}', '_blank')" title="PP'yi görüntülemek için tıkla (sağ tık ile kopyala)">`
     : `<span class="guild-detail-icon-placeholder">🗄️</span>`;
+
+  // Hızlı kopyalama butonları
+  const quickCopyButtons = [];
+  if (iconUrl) {
+    quickCopyButtons.push(`<button class="quick-copy-btn" onclick="navigator.clipboard.writeText('${iconUrl}'); showToast('PP URL kopyalandı', 'success');" title="PP URL Kopyala">🖼️ PP Kopyala</button>`);
+  }
+  if (guild.banner_url) {
+    quickCopyButtons.push(`<button class="quick-copy-btn" onclick="navigator.clipboard.writeText('${guild.banner_url}'); showToast('Banner URL kopyalandı', 'success');" title="Banner URL Kopyala">🎨 Banner Kopyala</button>`);
+  }
+  quickCopyButtons.push(`<button class="quick-copy-btn" onclick="navigator.clipboard.writeText('${guild.id}'); showToast('ID kopyalandı: ${guild.id}', 'success');" title="ID Kopyala">📋 ID Kopyala</button>`);
 
   const metaItems = [
     `<span class="guild-detail-id">🆔 ${guild.id || '-'}</span>`,
@@ -1205,6 +1248,7 @@ function renderGuildDetailView(data) {
         <div class="guild-detail-meta">${metaItems.join('')}</div>
         ${guild.description ? `<div class="guild-detail-description">${escapeHtml(guild.description)}</div>` : ''}
         ${guild.features?.length > 0 ? `<div class="guild-features">${guild.features.map(f => `<span class="feature-badge">${f}</span>`).join('')}</div>` : ''}
+        <div class="quick-copy-bar">${quickCopyButtons.join('')}</div>
       </div>
     </div>
   `;
