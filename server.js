@@ -1412,51 +1412,113 @@ async function fetchDiscordWidget(guildId) {
   return null;
 }
 
-// Disboard.org'dan sunucu ismi çek
+// Disboard.org'dan sunucu ismi çek - daha esnek parsing
 async function fetchDisboardInfo(guildId) {
   try {
     const res = await axios.get(`https://disboard.org/search?keyword=${guildId}`, {
-      timeout: 4000, // Daha kısa timeout
+      timeout: 5000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
       }
     });
     const html = res.data;
-    const blockMatch = html.match(new RegExp(`<li[^>]*data-id="${guildId}"[\\s\\S]*?</li>`, 'i'));
-    if (!blockMatch) return null;
-    const block = blockMatch[0];
-    const nameMatch = block.match(/<h3[^>]*>([^<]+)<\/h3>/i);
-    const iconMatch = block.match(/data-background-image="([^"]+)"/i);
-    const descMatch = block.match(/<div[^>]*class="listing-description"[^>]*>([\s\S]*?)<\/div>/i);
+    
+    // Farklı pattern'ler dene - data-id attribute'ü ile ara
+    const patterns = [
+      new RegExp(`data-id="${guildId}"[^>]*>[\\s\\S]*?<h3[^>]*>([^<]+)</h3>`, 'i'),
+      new RegExp(`data-id='${guildId}'[^>]*>[\\s\\S]*?<h3[^>]*>([^<]+)</h3>`, 'i'),
+      new RegExp(`class="[^"]*server-item[^"]*"[^>]*data-id="${guildId}"[\\s\\S]*?<h3[^>]*>([^<]+)</h3>`, 'i')
+    ];
+    
+    let name = null;
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+      if (match) {
+        name = match[1].trim();
+        break;
+      }
+    }
+    
+    // Alternatif: Meta tag veya başlık ara
+    if (!name) {
+      const metaMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i);
+      if (metaMatch && metaMatch[1].includes(guildId.slice(-6))) {
+        name = metaMatch[1].trim();
+      }
+    }
+    
+    if (!name) return null;
+    
+    // İkon ara - data-src veya src attribute'ü
+    let icon = null;
+    const iconPatterns = [
+      new RegExp(`data-id="${guildId}"[^>]*data-src="([^"]+)"`, 'i'),
+      new RegExp(`data-id="${guildId}"[^>]*src="([^"]+)"`, 'i'),
+      new RegExp(`data-id="${guildId}"[\\s\\S]*?<img[^>]*src="([^"]+)"`, 'i')
+    ];
+    for (const pattern of iconPatterns) {
+      const match = html.match(pattern);
+      if (match) {
+        icon = match[1].startsWith('http') ? match[1] : `https://disboard.org${match[1]}`;
+        break;
+      }
+    }
+    
+    // Açıklama ara
+    let description = null;
+    const descPatterns = [
+      new RegExp(`data-id="${guildId}"[\\s\\S]*?<p[^>]*class="[^"]*description[^"]*"[^>]*>([\\s\\S]*?)</p>`, 'i'),
+      new RegExp(`data-id="${guildId}"[\\s\\S]*?<div[^>]*class="[^"]*desc[^"]*"[^>]*>([\\s\\S]*?)</div>`, 'i')
+    ];
+    for (const pattern of descPatterns) {
+      const match = html.match(pattern);
+      if (match) {
+        description = stripHtml(match[1]);
+        if (description.length > 10) break;
+      }
+    }
+    
     return {
-      name: nameMatch?.[1]?.trim() || null,
-      icon: iconMatch ? (iconMatch[1].startsWith('http') ? iconMatch[1] : `https://disboard.org${iconMatch[1]}`) : null,
-      description: descMatch ? stripHtml(descMatch[1]) : null,
+      name,
+      icon,
+      description,
       source: 'disboard'
     };
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.log(`[Disboard] Hata ${guildId}:`, err.message);
+  }
   return null;
 }
 
-// Tüm kaynaklardan sunucu ismi çözümle
+// Tüm kaynaklardan sunucu ismi çözümle - tüm metadata'yı döndür
 async function resolveGuildName(guildId) {
+  const guildIdStr = String(guildId);
+  
   // Önce cache kontrol
-  if (guildNamesCache.has(guildId)) {
-    return { id: guildId, name: guildNamesCache.get(guildId), source: 'cache' };
+  if (guildNamesCache.has(guildIdStr)) {
+    return { id: guildIdStr, name: guildNamesCache.get(guildIdStr), source: 'cache' };
   }
 
   // 1. Discord Widget API (en hızlı, public)
-  const widget = await fetchDiscordWidget(guildId);
+  const widget = await fetchDiscordWidget(guildIdStr);
   if (widget?.name) {
-    rememberGuildName(guildId, widget.name);
-    return { id: guildId, name: widget.name, source: 'widget' };
+    rememberGuildName(guildIdStr, widget.name);
+    return { id: guildIdStr, name: widget.name, source: 'widget' };
   }
 
-  // 2. Disboard.org (yedek)
-  const disboard = await fetchDisboardInfo(guildId);
+  // 2. Disboard.org (yedek) - icon ve description ile birlikte
+  const disboard = await fetchDisboardInfo(guildIdStr);
   if (disboard?.name) {
-    rememberGuildName(guildId, disboard.name);
-    return { id: guildId, name: disboard.name, icon: disboard.icon, description: disboard.description, source: 'disboard' };
+    rememberGuildName(guildIdStr, disboard.name);
+    return {
+      id: guildIdStr,
+      name: disboard.name,
+      icon: disboard.icon,
+      description: disboard.description,
+      source: 'disboard'
+    };
   }
 
   return null;
@@ -3674,10 +3736,25 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
       const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
       
       for await (const line of rl) {
-        if (!line.includes(guildId)) continue;
+        // Daha esnek guild ID arama - string ve number formatlarını destekle
+        const guildIdStr = String(guildId);
+        const guildIdNum = Number(guildId);
+        
+        // Hızlı kontrol: satırda guild ID var mı?
+        if (!line.includes(guildIdStr) && !line.includes(`'${guildIdStr}'`) && !line.includes(`"${guildIdStr}"`)) continue;
 
-        const bracketLists = [...line.matchAll(/\[(\d{10,30}(?:,\d{10,30})*)\]/g)].map(m => m[1]);
-        const hasGuildInList = bracketLists.some(raw => raw.split(',').includes(guildId));
+        // Array formatındaki guild listelerini bul: [123, 456, 789] veya ['123', '456']
+        const bracketLists = [...line.matchAll(/\[([^\]]+)\]/g)].map(m => m[1]);
+        let hasGuildInList = false;
+        
+        for (const raw of bracketLists) {
+          // Sayı veya string formatındaki ID'leri bul
+          const ids = raw.split(',').map(s => s.trim().replace(/^['"]|['"]$/g, ''));
+          if (ids.includes(guildIdStr) || ids.includes(String(guildIdNum))) {
+            hasGuildInList = true;
+            break;
+          }
+        }
         if (!hasGuildInList) continue;
 
         const userIdMatch = line.match(/\(\s*(\d{17,20})\s*,/);
@@ -3687,7 +3764,6 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
 
         // SQL tuple içindeki tüm değerleri çıkar
         const quotedValues = [...line.matchAll(/'([^']*)'/g)].map(m => m[1]);
-        const allValues = quotedValues;
 
         // Email bul - düz email veya base64
         let email = null;
@@ -3698,10 +3774,14 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
           }
         }
         if (!email) {
-          const b64Candidate = quotedValues.find(v => v && v.length >= 8 && v.length <= 200 && /^[A-Za-z0-9+/=]+$/.test(v));
-          if (b64Candidate) {
-            const decoded = decodeBase64Maybe(b64Candidate);
-            if (decoded && decoded.includes('@')) email = decoded;
+          for (const val of quotedValues) {
+            if (val && val.length >= 8 && val.length <= 200 && /^[A-Za-z0-9+/=]+$/.test(val)) {
+              const decoded = decodeBase64Maybe(val);
+              if (decoded && decoded.includes('@') && decoded.includes('.')) {
+                email = decoded;
+                break;
+              }
+            }
           }
         }
 
@@ -3715,7 +3795,7 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
           }
         }
 
-        // Username, avatar, global_name, connections ara
+        // Username, avatar, global_name, connections, phone ara
         let username = null;
         let avatar_hash = null;
         let global_name = null;
@@ -3723,65 +3803,77 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
         let connection_types = [];
         let phone = null;
 
-        // Username, global_name, avatar - Base64 decode dahil
+        // JSON user data ara - {"username":"...", "avatar":"..."}
+        const userJsonMatch = line.match(/'({"username"[^}]+})'/);
+        if (userJsonMatch) {
+          try {
+            const userData = JSON.parse(userJsonMatch[1]);
+            if (userData.username) username = userData.username;
+            if (userData.avatar) avatar_hash = userData.avatar;
+            if (userData.global_name) global_name = userData.global_name;
+          } catch { /* ignore */ }
+        }
+
+        // Değerleri tek tek kontrol et - Base64 decode dahil
         for (const val of quotedValues) {
           if (!val || val.length < 2) continue;
 
           // Base64 decode dene
           let decoded = val;
-          const isBase64 = val.length >= 8 && /^[A-Za-z0-9+/=]+$/.test(val);
+          const isBase64 = val.length >= 8 && /^[A-Za-z0-9+/=]+$/.test(val) && !val.includes(' ');
           if (isBase64) {
             const tryDecode = decodeBase64Maybe(val);
-            if (tryDecode && tryDecode !== val) {
+            if (tryDecode && tryDecode !== val && tryDecode.length > 0) {
               decoded = tryDecode;
             }
           }
 
-          // Username candidate (decode edilmiş değer)
-          if (decoded.length > 2 && decoded.length < 50 && !decoded.includes('@') && !decoded.includes('.')) {
-            if (!username && /^[a-zA-Z0-9_.]+$/.test(decoded)) {
+          // Username candidate (decode edilmiş değer) - Discord username formatı
+          if (!username && decoded.length > 2 && decoded.length < 50 && !decoded.includes('@')) {
+            if (/^[a-zA-Z0-9_.]+$/.test(decoded) && !decoded.match(/^\d+$/)) {
               username = decoded;
               continue;
             }
-            // Global name candidate (boşluk içerebilir)
-            if (!global_name && decoded.includes(' ') && decoded.length > 3 && decoded.length < 50) {
-              global_name = decoded;
-              continue;
-            }
-            // Avatar hash: 32 karakter hex veya 'a_' ile başlayan
-            if (!avatar_hash && (decoded.match(/^[a-f0-9]{32}$/) || decoded.match(/^a_[a-f0-9]{32}$/))) {
-              avatar_hash = decoded;
-              continue;
-            }
-            // Phone number
-            if (!phone && decoded.match(/^\+?[0-9\s\-\(\)]{10,20}$/)) {
-              phone = decoded;
-            }
+          }
+
+          // Global name candidate (boşluk içerebilir)
+          if (!global_name && decoded.includes(' ') && decoded.length > 3 && decoded.length < 50 && !decoded.includes('@')) {
+            global_name = decoded;
+            continue;
+          }
+
+          // Avatar hash: 32 karakter hex veya 'a_' ile başlayan
+          if (!avatar_hash && (decoded.match(/^[a-f0-9]{32}$/) || decoded.match(/^a_[a-f0-9]{32}$/))) {
+            avatar_hash = decoded;
+            continue;
+          }
+
+          // Phone number
+          if (!phone && decoded.match(/^[\+]?[0-9\s\-\(\)]{10,20}$/)) {
+            phone = decoded;
           }
         }
 
-        // Connections çıkar - ["steam","twitch"] formatı
-        const connMatch = line.match(/\[(?:"([^"]+)"|'([^']+)'|([^,\]]+))(?:,(?:"([^"]+)"|'([^']+)'|([^,\]]+)))*\]/g);
-        if (connMatch) {
-          for (const match of connMatch) {
-            // Boş array değilse ve guild listesi değilse
-            if (match.length > 2 && !match.includes(guildId)) {
-              const connVals = [...match.matchAll(/"([^"]+)"|'([^']+)'/g)].map(m => m[1] || m[2]).filter(Boolean);
-              if (connVals.length > 0 && connVals.length < 20) {
-                // Bu bir connection listesi mi kontrol et
-                const isConnection = connVals.some(v => ['steam', 'twitch', 'youtube', 'spotify', 'twitter', 'github', 'instagram', 'paypal'].includes(v.toLowerCase()));
-                if (isConnection) {
-                  connection_types = connVals.map(v => v.toLowerCase());
-                  connections = connVals.map(v => ({ type: v.toLowerCase(), name: v }));
-                }
-              }
+        // Connections çıkar - ["steam","twitch"] veya ['steam','twitch'] formatı
+        const allArrays = [...line.matchAll(/\[([^\]]+)\]/g)].map(m => m[1]);
+        for (const arrContent of allArrays) {
+          // Guild listesi değil, connection listesi mi kontrol et
+          if (arrContent.includes(guildIdStr) || arrContent.match(/\d{18,20}/)) continue; // Guild listesi olabilir
+          
+          const items = arrContent.split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+          if (items.length > 0 && items.length < 20) {
+            // Bu bir connection listesi mi kontrol et
+            const isConnection = items.some(v => ['steam', 'twitch', 'youtube', 'spotify', 'twitter', 'github', 'instagram', 'paypal', 'reddit', 'tiktok', 'xbox', 'playstation', 'epic', 'battlenet'].includes(v.toLowerCase()));
+            if (isConnection && items.length > connections.length) {
+              connection_types = items.map(v => v.toLowerCase());
+              connections = items.map(v => ({ type: v.toLowerCase(), name: v }));
             }
           }
         }
 
         members.push({
           discord_id: userId,
-          username,
+          username: username || `User_${userId.slice(-4)}`,
           global_name,
           email,
           ip,
@@ -4255,12 +4347,17 @@ app.get('/api/guilds', async (req, res) => {
               memberInfoMap.set(userId, { id: userId, username, avatar });
             }
 
-            const lists = [...line.matchAll(/\[(\d{10,30}(?:,\d{10,30})*)\]/g)].map(m => m[1]);
-            if (!lists.length) continue;
+            // Tüm array'leri bul - [123, 456] veya ['123', '456'] formatları
+            const allArrays = [...line.matchAll(/\[([^\]]+)\]/g)].map(m => m[1]);
+            if (!allArrays.length) continue;
 
+            // Guild ID'lerini çıkar - sayı veya string formatında
             let bestIds = [];
-            for (const raw of lists) {
-              const ids = raw.split(',').map(s => s.trim()).filter(s => /^\d{17,20}$/.test(s) && !s.startsWith('7656119'));
+            for (const raw of allArrays) {
+              // Virgülle ayrılmış değerleri temizle (tırnak işaretlerini kaldır)
+              const ids = raw.split(',')
+                .map(s => s.trim().replace(/^['"]|['"]$/g, ''))
+                .filter(s => /^\d{17,20}$/.test(s) && !s.startsWith('7656119'));
               if (ids.length > bestIds.length) bestIds = ids;
             }
             if (!bestIds.length) continue;
