@@ -1126,7 +1126,6 @@ function createGuildsListView(data) {
     return container;
   }
 
-  const guilds = data.guilds || [];
   const totalCount = data.count || guilds.length;
   const sourceLabels = {
     database: 'Admin/DB',
