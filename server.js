@@ -3177,8 +3177,9 @@ app.get('/api/health', (req, res) => {
 });
 
 // Simple version endpoint to verify deployed build
+// Public: version endpoint for deployment verification
 app.get('/api/version', (req, res) => {
-  res.json({ ok: true, version: APP_VERSION });
+  res.json({ ok: true, version: APP_VERSION, note: 'public' });
 });
 
 // 🗺️ IP HARİTA ENDPOINT - IP konumlarını harita için döndür
