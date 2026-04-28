@@ -983,6 +983,9 @@ function createGuildsListView(data) {
     database: 'Admin/DB',
     directory: 'Sunucu Dizini',
     widget: 'Discord Widget',
+    disboard: 'Disboard',
+    topgg: 'Top.gg',
+    discordservers: 'DiscordServers',
     cache: 'Önbellek',
     files: 'Arşiv',
     external_resolver: 'Dış Kaynak'
@@ -1135,6 +1138,9 @@ function renderGuildDetailView(data) {
     database: 'Admin/DB',
     directory: 'Sunucu Dizini',
     widget: 'Discord Widget',
+    disboard: 'Disboard',
+    topgg: 'Top.gg',
+    discordservers: 'DiscordServers',
     cache: 'Önbellek',
     files: 'Arşiv'
   };

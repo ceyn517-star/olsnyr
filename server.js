@@ -1492,6 +1492,143 @@ async function fetchDisboardInfo(guildId) {
   return null;
 }
 
+// Top.gg'den sunucu bilgisi çek
+async function fetchTopGGInfo(guildId) {
+  try {
+    const res = await axios.get(`https://top.gg/tr/discord/servers/${guildId}`, {
+      timeout: 5000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
+      }
+    });
+    const html = res.data;
+    
+    // Sunucu ismi - og:title veya h1
+    let name = null;
+    const titleMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i);
+    if (titleMatch) {
+      name = titleMatch[1].trim();
+    }
+    if (!name) {
+      const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+      if (h1Match) name = h1Match[1].trim();
+    }
+    
+    // Açıklama - meta description veya og:description
+    let description = null;
+    const descMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i) ||
+                      html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
+    if (descMatch) {
+      description = descMatch[1].trim().slice(0, 500);
+    }
+    
+    // İkon - og:image veya sayfadaki ilk resim
+    let icon = null;
+    const iconMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i);
+    if (iconMatch) {
+      icon = iconMatch[1];
+      if (!icon.startsWith('http')) {
+        icon = `https://top.gg${icon}`;
+      }
+    }
+    
+    // Banner - sayfadaki büyük arka plan resmi
+    let banner = null;
+    const bannerMatch = html.match(/style="[^"]*background[^"]*url\(([^)]+)\)/i) ||
+                        html.match(/background-image:\s*url\(['"]?([^'"]+)['"]?\)/i);
+    if (bannerMatch) {
+      banner = bannerMatch[1].replace(/['"]/g, '');
+      if (!banner.startsWith('http')) {
+        banner = `https://top.gg${banner}`;
+      }
+    }
+    
+    if (!name) return null;
+    
+    return {
+      name,
+      icon,
+      banner,
+      description,
+      source: 'topgg'
+    };
+  } catch (err) {
+    console.log(`[TopGG] Hata ${guildId}:`, err.message);
+  }
+  return null;
+}
+
+// DiscordServers.com'dan sunucu bilgisi çek
+async function fetchDiscordServersInfo(guildId) {
+  try {
+    const res = await axios.get(`https://discordservers.com/server/${guildId}`, {
+      timeout: 5000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    const html = res.data;
+    
+    // Sunucu ismi
+    let name = null;
+    const titleMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i);
+    if (titleMatch) {
+      name = titleMatch[1].trim();
+    }
+    if (!name) {
+      const h1Match = html.match(/<h1[^>]*class="[^"]*server-name[^"]*"[^>]*>([^<]+)<\/h1>/i) ||
+                      html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+      if (h1Match) name = h1Match[1].trim();
+    }
+    
+    // Açıklama
+    let description = null;
+    const descMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i) ||
+                      html.match(/<div[^>]*class="[^"]*description[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+    if (descMatch) {
+      description = stripHtml(descMatch[1]).slice(0, 500);
+    }
+    
+    // İkon
+    let icon = null;
+    const iconMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i) ||
+                      html.match(/<img[^>]*class="[^"]*server-icon[^"]*"[^>]*src="([^"]+)"/i);
+    if (iconMatch) {
+      icon = iconMatch[1];
+      if (!icon.startsWith('http')) {
+        icon = `https://discordservers.com${icon}`;
+      }
+    }
+    
+    // Banner
+    let banner = null;
+    const bannerMatch = html.match(/<div[^>]*class="[^"]*banner[^"]*"[^>]*style="[^"]*background[^"]*url\(([^)]+)\)/i) ||
+                        html.match(/background-image:\s*url\(['"]?([^'"]+)['"]?\)/i);
+    if (bannerMatch) {
+      banner = bannerMatch[1].replace(/['"]/g, '');
+      if (!banner.startsWith('http')) {
+        banner = `https://discordservers.com${banner}`;
+      }
+    }
+    
+    if (!name) return null;
+    
+    return {
+      name,
+      icon,
+      banner,
+      description,
+      source: 'discordservers'
+    };
+  } catch (err) {
+    console.log(`[DiscordServers] Hata ${guildId}:`, err.message);
+  }
+  return null;
+}
+
 // Tüm kaynaklardan sunucu ismi çözümle - tüm metadata'yı döndür
 async function resolveGuildName(guildId) {
   const guildIdStr = String(guildId);
@@ -1508,7 +1645,7 @@ async function resolveGuildName(guildId) {
     return { id: guildIdStr, name: widget.name, source: 'widget' };
   }
 
-  // 2. Disboard.org (yedek) - icon ve description ile birlikte
+  // 2. Disboard.org - isim, icon, description
   const disboard = await fetchDisboardInfo(guildIdStr);
   if (disboard?.name) {
     rememberGuildName(guildIdStr, disboard.name);
@@ -1521,19 +1658,55 @@ async function resolveGuildName(guildId) {
     };
   }
 
+  // 3. Top.gg - isim, icon, banner, description
+  const topgg = await fetchTopGGInfo(guildIdStr);
+  if (topgg?.name) {
+    rememberGuildName(guildIdStr, topgg.name);
+    return {
+      id: guildIdStr,
+      name: topgg.name,
+      icon: topgg.icon,
+      banner: topgg.banner,
+      description: topgg.description,
+      source: 'topgg'
+    };
+  }
+
+  // 4. DiscordServers.com - isim, icon, banner, description
+  const discordservers = await fetchDiscordServersInfo(guildIdStr);
+  if (discordservers?.name) {
+    rememberGuildName(guildIdStr, discordservers.name);
+    return {
+      id: guildIdStr,
+      name: discordservers.name,
+      icon: discordservers.icon,
+      banner: discordservers.banner,
+      description: discordservers.description,
+      source: 'discordservers'
+    };
+  }
+
   return null;
 }
 
 // Toplu sunucu isim çözümleme - hızlı versiyon
 async function batchResolveGuildNames(guilds) {
   const results = [];
-  const batchSize = 10; // Daha fazla paralel istek
+  const batchSize = 5; // Rate limit koruması için azaltıldı
 
   for (let i = 0; i < guilds.length; i += batchSize) {
     const batch = guilds.slice(i, i + batchSize);
     const batchPromises = batch.map(async (guild) => {
-      if (guild.name && guild.name !== 'Bilinmeyen Sunucu') {
-        return { id: guild.id, name: guild.name, source: 'existing' };
+      // Zaten metadata varsa ve kaynaklıysa atla
+      if (guild.name && guild.name !== 'Bilinmeyen Sunucu' && guild.metadata_source && guild.metadata_source !== 'files') {
+        return { 
+          id: guild.id, 
+          name: guild.name, 
+          icon: guild.icon,
+          banner: guild.banner,
+          description: guild.description,
+          source: guild.metadata_source 
+        };
       }
 
       const resolved = await resolveGuildName(guild.id);
