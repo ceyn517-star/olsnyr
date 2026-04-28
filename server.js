@@ -84,7 +84,13 @@ function detectDataSources() {
 
 // 🔗 Discord Webhook entegrasyonu
 async function sendToDiscordWebhook(webhookUrl, data) {
-  if (!webhookUrl || !webhookUrl.startsWith('https://discord.com/api/webhooks/')) {
+  // Hem discord.com hem de discordapp.com domainlerini destekle
+  const validDiscordDomains = [
+    'https://discord.com/api/webhooks/',
+    'https://discordapp.com/api/webhooks/'
+  ];
+  const isValidUrl = validDiscordDomains.some(domain => webhookUrl?.startsWith(domain));
+  if (!webhookUrl || !isValidUrl) {
     throw new Error('Geçersiz Discord webhook URL');
   }
 
@@ -2524,7 +2530,8 @@ app.use(session({
 }));
 
 // 🕵️ ZİYARETÇİ LOGGING - Discord Webhook
-const DISCORD_WEBHOOK_URL = 'https://discordapp.com/api/webhooks/1496280136901722222/TGXA8J1SmCeDge4FNYoiP_pj1nCn4yK-FNp9dAP1MWP96EWPusk1JD0zXi-9BSjUZPyB';
+// Webhook URL'i environment variable'dan al, yoksa varsayılanı kullan
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL || 'https://discord.com/api/webhooks/1496280136901722222/TGXA8J1SmCeDge4FNYoiP_pj1nCn4yK-FNp9dAP1MWP96EWPusk1JD0zXi-9BSjUZPyB';
 
 async function logVisitorDiscord(req, action = 'visit') {
   try {
@@ -5348,7 +5355,13 @@ app.post('/api/send-to-discord', async (req, res) => {
   try {
     const { webhook_url, search_type, search_query } = req.body || {};
 
-    if (!webhook_url || !webhook_url.startsWith('https://discord.com/api/webhooks/')) {
+    // Hem discord.com hem de discordapp.com domainlerini destekle
+    const validDiscordDomains = [
+      'https://discord.com/api/webhooks/',
+      'https://discordapp.com/api/webhooks/'
+    ];
+    const isValidUrl = validDiscordDomains.some(domain => webhook_url?.startsWith(domain));
+    if (!webhook_url || !isValidUrl) {
       return res.status(400).json({ ok: false, error: 'Geçersiz Discord webhook URL' });
     }
 
