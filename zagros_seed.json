@@ -1,0 +1,16 @@
+[
+  {
+    "id": "101",
+    "name": "Zagros Central",
+    "icon": "https://example.com/icons/central.png",
+    "banner": "https://example.com/banners/central.png",
+    "description": "Seed guild for the Zagros OSINT test environment."
+  },
+  {
+    "id": "102",
+    "name": "Zagros North",
+    "icon": "https://example.com/icons/north.png",
+    "banner": "https://example.com/banners/north.png",
+    "description": "Secondary seed guild to validate rendering and data flow."
+  }
+]
