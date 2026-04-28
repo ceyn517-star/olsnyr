@@ -2763,6 +2763,65 @@ app.post('/api/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
+// Seed from local file (admin only) - reads zagros_seed.json from DATA_DIR
+async function seedLocalFromFile() {
+  const seedPath = path.join(DATA_DIR, 'zagros_seed.json');
+  if (!fs.existsSync(seedPath)) throw new Error('seed_file_missing');
+  const content = fs.readFileSync(seedPath, 'utf8');
+  const data = safeJsonParse(content);
+  const guilds = Array.isArray(data) ? data : (data?.guilds || []);
+  if (!guilds.length) return { ok: true, inserted: 0 };
+  let count = 0;
+  for (const g of guilds) {
+    const id = String(g.id || g.guild_id || g.GuildId || '');
+    const name = g.name || null;
+    const icon = g.icon || null;
+    const banner = g.banner || null;
+    const description = g.description || null;
+    try { await dbSaveGuildName(id, name, icon, banner, description); count++; } catch { /* ignore per-item */ }
+  }
+  return { ok: true, inserted: count };
+}
+
+app.post('/api/seed-local', requireAdmin, async (req, res) => {
+  try {
+    const result = await seedLocalFromFile();
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+// Seed test data (admin only) - for quick integration testing on prod/dev
+async function seedTestData() {
+  const testDiscord = '12345678901234567890';
+  const testName = 'Test User';
+  const testEmail = 'test.user@example.com';
+  try {
+    if (!isDBReady()) return { ok: false, message: 'db_not_ready' };
+    await runQuery(
+      `INSERT INTO users (discord_id, username, email, registration_ip, last_ip, created_at, source)
+       VALUES ($1, $2, $3, NULL, NULL, NOW(), 'seed')
+       ON CONFLICT (discord_id) DO NOTHING;`,
+      [testDiscord, testName, testEmail]
+    );
+    await runQuery(
+      `INSERT INTO query_logs (discord_id, username, email, ip, created_at, source)
+       VALUES ($1, $2, $3, NULL, NOW(), 'seed')
+       ON CONFLICT DO NOTHING;`,
+      [testDiscord, testName, testEmail]
+    );
+    return { ok: true, discord_id: testDiscord };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+// Admin endpoint to seed test data
+app.post('/api/seed-test', requireAdmin, async (req, res) => {
+  const result = await seedTestData();
+  res.json(result);
+});
+
 // 👑 ADMIN PANEL ENDPOINT'LERİ
 
 // Admin oturum doğrulama middleware

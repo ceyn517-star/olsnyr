@@ -1102,6 +1102,16 @@ function createGuildsListView(data) {
   const container = document.createElement('div');
   container.className = 'guilds-list-container';
 
+  // Skeleton placeholders when data is not yet available
+  const guilds = data.guilds || [];
+  if (!guilds.length) {
+    const skeleton = document.createElement('div');
+    skeleton.className = 'guilds-skeleton-grid';
+    skeleton.innerHTML = Array.from({ length: 6 }).map(() => `<div class="guild-skeleton-card"></div>`).join('');
+    container.appendChild(skeleton);
+    return container;
+  }
+
   // Hata durumu - yine de boş liste göster
   if (data.error && !data.guilds?.length) {
     container.innerHTML = `
@@ -1279,24 +1289,23 @@ function createGuildsListView(data) {
     // ID kopyalama butonu
     const copyIdHtml = `<button class="copy-id-btn" onclick="event.stopPropagation(); navigator.clipboard.writeText('${g.id}'); showToast('ID kopyalandı: ${g.id}', 'success');" title="ID Kopyala">📋</button>`;
 
+    // Safer, minimal render to ensure at least name/avatar shows up
     card.innerHTML = `
       ${bannerHtml}
       <div class="guild-card-header">
         ${iconHtml}
         <div class="guild-card-title-wrap">
           <div class="guild-card-name">${displayName}</div>
-          ${!hasRealName ? `<div class="guild-id-hint">🔍 ${shortId}</div>` : ''}
         </div>
-        ${copyIdHtml}
       </div>
       <div class="guild-card-body">
-        ${membersHtml}
-        ${descHtml}
+        ${membersHtml || ''}
+        ${descHtml || ''}
         <div class="guild-card-meta">
           <span class="guild-card-count">👥 ${g.member_count?.toLocaleString('tr-TR') || 0} kayıt</span>
-          <span class="guild-card-source">📁 ${g.source === 'files' ? 'Arşiv' : 'Veritabanı'}</span>
+          <span class="guild-card-source">📁 ${g.source ?? 'Veritabanı'}</span>
         </div>
-        ${chipsHtml}
+        ${chipsHtml || ''}
       </div>
       <div class="guild-card-arrow">→</div>
     `;

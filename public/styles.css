@@ -398,6 +398,28 @@ button.ghost {
   font-weight: 600;
 }
 
+/* Skeleton UI for Guilds list */
+.guilds-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  padding: 8px 0;
+}
+.guild-skeleton-card {
+  width: 100%; height: 320px; border-radius: 12px; background: #2a2a2a;
+  position: relative; overflow: hidden;
+}
+.guild-skeleton-card::after {
+  content: '';
+  position: absolute; top: 0; left: -150px; width: 150px; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  animation: skeletonShimmer 1.2s infinite;
+}
+@keyframes skeletonShimmer {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(520px); }
+}
+
 /* Intro Video Overlay Styles */
 .intro-video {
   position: fixed;

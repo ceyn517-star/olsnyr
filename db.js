@@ -383,6 +383,12 @@ export async function dbGetStats() {
   };
 }
 
+// Run a raw SQL query (administrative helper for testing/seeding)
+export async function runQuery(sql, params) {
+  if (!pool) throw new Error('db_not_ready');
+  return pool.query(sql, params);
+}
+
 // ============= FIELD İLE ARAMA (Email/IP field tarama) =============
 export async function dbSearchByField(field, value) {
   if (!pool) return [];
