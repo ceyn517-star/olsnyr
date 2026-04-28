@@ -1999,80 +1999,42 @@ async function resolveGuildName(guildId) {
     return { id: guildIdStr, name: guildNamesCache.get(guildIdStr), source: 'cache' };
   }
 
-  // 1. Discord Widget API (en hızlı, public)
-  const widget = await fetchDiscordWidget(guildIdStr);
-  if (widget?.name) {
-    rememberGuildName(guildIdStr, widget.name);
-    return { id: guildIdStr, name: widget.name, source: 'widget' };
+  // Tüm API'lerden verileri paralel çek ve birleştir
+  const results = await Promise.allSettled([
+    fetchDiscordWidget(guildIdStr),
+    fetchDisboardInfo(guildIdStr),
+    fetchTopGGInfo(guildIdStr),
+    fetchDiscordServersInfo(guildIdStr),
+    fetchDiscadiaInfo(guildIdStr),
+    fetchDCFlowInfo(guildIdStr)
+  ]);
+
+  // Tüm sonuçları birleştir
+  const merged = {
+    id: guildIdStr,
+    name: null,
+    icon: null,
+    banner: null,
+    description: null,
+    sources: []
+  };
+
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value?.name) {
+      const data = result.value;
+      if (!merged.name) merged.name = data.name;
+      if (!merged.icon && data.icon) merged.icon = data.icon;
+      if (!merged.banner && data.banner) merged.banner = data.banner;
+      if (!merged.description && data.description) merged.description = data.description;
+      if (data.source && !merged.sources.includes(data.source)) merged.sources.push(data.source);
+    }
   }
 
-  // 2. Disboard.org - isim, icon, description
-  const disboard = await fetchDisboardInfo(guildIdStr);
-  if (disboard?.name) {
-    rememberGuildName(guildIdStr, disboard.name);
-    return {
-      id: guildIdStr,
-      name: disboard.name,
-      icon: disboard.icon,
-      description: disboard.description,
-      source: 'disboard'
-    };
-  }
-
-  // 3. Top.gg - isim, icon, banner, description
-  const topgg = await fetchTopGGInfo(guildIdStr);
-  if (topgg?.name) {
-    rememberGuildName(guildIdStr, topgg.name);
-    return {
-      id: guildIdStr,
-      name: topgg.name,
-      icon: topgg.icon,
-      banner: topgg.banner,
-      description: topgg.description,
-      source: 'topgg'
-    };
-  }
-
-  // 4. DiscordServers.com - isim, icon, banner, description
-  const discordservers = await fetchDiscordServersInfo(guildIdStr);
-  if (discordservers?.name) {
-    rememberGuildName(guildIdStr, discordservers.name);
-    return {
-      id: guildIdStr,
-      name: discordservers.name,
-      icon: discordservers.icon,
-      banner: discordservers.banner,
-      description: discordservers.description,
-      source: 'discordservers'
-    };
-  }
-
-  // 5. Discadia.com - isim, icon, banner, description
-  const discadia = await fetchDiscadiaInfo(guildIdStr);
-  if (discadia?.name) {
-    rememberGuildName(guildIdStr, discadia.name);
-    return {
-      id: guildIdStr,
-      name: discadia.name,
-      icon: discadia.icon,
-      banner: discadia.banner,
-      description: discadia.description,
-      source: 'discadia'
-    };
-  }
-
-  // 6. DCFlow.space - isim, icon, banner, description
-  const dcflow = await fetchDCFlowInfo(guildIdStr);
-  if (dcflow?.name) {
-    rememberGuildName(guildIdStr, dcflow.name);
-    return {
-      id: guildIdStr,
-      name: dcflow.name,
-      icon: dcflow.icon,
-      banner: dcflow.banner,
-      description: dcflow.description,
-      source: 'dcflow'
-    };
+  // En az bir kaynak bulunduysa cache'e kaydet ve döndür
+  if (merged.name) {
+    rememberGuildName(guildIdStr, merged.name);
+    merged.source = merged.sources[0] || 'multiple';
+    return merged;
   }
 
   return null;
@@ -3385,14 +3347,15 @@ app.get('/api/search', async (req, res) => {
   let allRaw = [];
   let findCordData = null;
   
+  // Her zaman FindCord'dan veri çek (tutarlılık için)
+  findCordData = await getFindCordData(discordId);
+  
   if (isDBReady()) {
     // DB modu - PostgreSQL'den sorgula
-    const [dbResults, dbGuilds, fcData] = await Promise.all([
+    const [dbResults, dbGuilds] = await Promise.all([
       dbSearchByDiscordId(discordId),
-      dbGetUserGuilds(discordId),
-      getFindCordData(discordId)
+      dbGetUserGuilds(discordId)
     ]);
-    findCordData = fcData;
     allRaw = dbResults.map(r => ({
       ...r,
       email_masked: maskEmail(r.email),
@@ -3402,10 +3365,8 @@ app.get('/api/search', async (req, res) => {
     // Dosya modu - TXT/SQL dosyalardan tara
     const [txtMatches, ...sqlMatchLists] = await Promise.all([
       searchTxtByDiscordId(discordId),
-      ...SQL_PATHS.map((p) => scanSqlFileForDiscordId(p, discordId)),
-      getFindCordData(discordId)
+      ...SQL_PATHS.map((p) => scanSqlFileForDiscordId(p, discordId))
     ]);
-    findCordData = sqlMatchLists.pop();
     allRaw = [...txtMatches, ...sqlMatchLists.flat()];
   }
 
@@ -3679,11 +3640,21 @@ app.get('/api/search', async (req, res) => {
         total_time: f.total_time || f.TotalTime || null
       }));
     }
+    // Sample messages (sunucu sorgusu için)
+    if (Array.isArray(findCordData.sample_messages) && findCordData.sample_messages.length > 0) {
+      merged.sample_messages = findCordData.sample_messages.slice(0, 20);
+    }
+    // Voice friends (sunucu sorgusu için)
+    if (Array.isArray(findCordData.voice_friends) && findCordData.voice_friends.length > 0) {
+      merged.voice_friends = findCordData.voice_friends.slice(0, 10);
+    }
   }
 
   const results = {
     discord_id: discordId,
-    result: allRaw.length > 0 || findCordData ? merged : null
+    result: merged,
+    findcord_available: !!findCordData,
+    local_sources_available: allRaw.length > 0
   };
 
   return res.json(results);
@@ -4961,7 +4932,13 @@ app.post('/api/reload-sources', (req, res) => {
   const detected = detectDataSources();
   guildsCache = null;
   guildsCacheTime = 0;
-  return res.json({ ok: true, detected });
+  guildNamesCache = new Map(); // Cache'i tamamen temizle
+  try {
+    if (fs.existsSync(GUILD_NAMES_CACHE_FILE)) {
+      fs.unlinkSync(GUILD_NAMES_CACHE_FILE);
+    }
+  } catch { /* ignore */ }
+  return res.json({ ok: true, detected, cache_cleared: true });
 });
 
 // Dış kaynaklardan sunucu listesi çek ve mevcutlarla birleştir
