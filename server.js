@@ -207,8 +207,8 @@ const SITE_PASSWORD = process.env.ZAGROS_PASSWORD ?? 'zagros31ceyn';
 const FINDCORD_API_KEY = '1fb785c3eb8069ba341836e0b25dabb4b20e439b4bce300123da1f791f12a3ea';
 
 // 👑 ADMIN PANEL YAPILANDIRMASI
-const ADMIN_ID = process.env.ADMIN_ID || 'admin'; // Admin kullanıcı adı
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123'; // Admin şifresi
+const ADMIN_ID = process.env.ADMIN_ID || 'zagros'; // Admin kullanıcı adı
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'zagros31ceyn'; // Admin şifresi
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || 'zagros-admin-secret-key';
 
 // Ziyaretçi takip veritabanı
