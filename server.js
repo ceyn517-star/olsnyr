@@ -14,6 +14,8 @@ import axios from 'axios';
 
 // App version for deployment verification (override via env APP_VERSION in CI/CD)
 const APP_VERSION = process.env.APP_VERSION || ('dev-build-' + new Date().toISOString().slice(0,10));
+// Log deploy version at startup to aid verification in logs/CI
+console.log(`[Deploy] Zagros OSINT deploy ver: ${APP_VERSION} @ ${new Date().toISOString()}`);
 import { initDB, isDBReady, dbSearchByDiscordId, dbGetUserGuilds, dbSearchByEmail, dbSearchByIp, dbSearchGuildMembers, dbGetAllGuilds, dbFindFriendsByIp, dbSaveGuildName, dbGetGuildName, dbGetStats, dbSearchByField, dbGetUsersByIds, dbListGuildNames, dbDeleteGuildName } from './db.js';
 import { scanDataSources, loadAllSql } from './data_sources.js';
 
