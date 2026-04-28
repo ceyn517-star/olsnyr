@@ -279,6 +279,8 @@ window.addEventListener('DOMContentLoaded', () => {
   if (toggle) {
     toggle.addEventListener('change', (e) => applyDarkMode(e.target.checked));
   }
+  // Clear intro-seen flag so the Matrix video intro always plays on load
+  try { localStorage.removeItem('zagros_intro_seen'); } catch {}
   // Show intro matrix overlay
   showIntroOverlay();
 });
