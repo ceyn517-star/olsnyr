@@ -2027,4 +2027,250 @@ uploadSqlBtn?.addEventListener('click', async () => {
 manualDiscordId?.addEventListener('keydown', (e) => { if (e.key === 'Enter') addManualDiscordInfo(); });
 manualEmailOnly?.addEventListener('keydown', (e) => { if (e.key === 'Enter') addManualEmail(); });
 
-await checkAuth();
+// 🎬 MATRIX PILL SELECTION - Cinematic Transition
+let pillSelectionMade = false;
+
+// Show pill selection on first visit
+function showPillSelection() {
+  if (pillSelectionMade || localStorage.getItem('pillSelected')) return;
+  
+  const theChoice = document.getElementById('the-choice');
+  if (theChoice) {
+    theChoice.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    
+    // Auto-play cinematic music/sound effect (if browser allows)
+    playMatrixSound();
+  }
+}
+
+// Play Matrix cinematic sound
+function playMatrixSound() {
+  try {
+    const audio = new Audio();
+    audio.volume = 0.3;
+    // Generated deep cinematic tone using Web Audio API instead
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    oscillator.frequency.setValueAtTime(60, audioCtx.currentTime); // Deep bass
+    oscillator.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 2);
+    
+    gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 2);
+    
+    oscillator.start(audioCtx.currentTime);
+    oscillator.stop(audioCtx.currentTime + 2);
+  } catch (e) { /* ignore audio errors */ }
+}
+
+// Blue Pill - Safe choice, shows warning then proceeds
+function selectBluePill() {
+  if (pillSelectionMade) return;
+  pillSelectionMade = true;
+  
+  const bluePill = document.getElementById('bluePill');
+  if (bluePill) {
+    bluePill.style.transform = 'scale(1.2) translateZ(50px)';
+    bluePill.style.boxShadow = '0 0 60px #00bfff, 0 0 100px #0080ff';
+  }
+  
+  showToast('💊 Mavi Hap: Güvenli mod seçildi. Gerçeklik devam ediyor...', 'info');
+  
+  // 10 second cinematic Matrix transition
+  startMatrixCinematic('blue');
+}
+
+// Red Pill - Truth choice, direct access
+function selectRedPill() {
+  if (pillSelectionMade) return;
+  pillSelectionMade = true;
+  
+  const redPill = document.getElementById('redPill');
+  if (redPill) {
+    redPill.style.transform = 'scale(1.2) translateZ(50px)';
+    redPill.style.boxShadow = '0 0 60px #ff0040, 0 0 100px #ff0000';
+  }
+  
+  showToast('💊 Kırmızı Hap: OSINT dünyasına hoş geldiniz...', 'success');
+  
+  // 10 second cinematic Matrix transition
+  startMatrixCinematic('red');
+}
+
+// 10 Second Fullscreen Matrix Cinematic
+function startMatrixCinematic(pillColor) {
+  const theChoice = document.getElementById('the-choice');
+  
+  // Create fullscreen cinematic overlay
+  const cinematic = document.createElement('div');
+  cinematic.id = 'matrix-cinematic';
+  cinematic.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    z-index: 99999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  `;
+  
+  // Matrix rain canvas
+  const canvas = document.createElement('canvas');
+  canvas.id = 'cinematic-canvas';
+  canvas.style.cssText = `
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.8;
+  `;
+  
+  // 3D Perspective text
+  const text3d = document.createElement('div');
+  text3d.style.cssText = `
+    position: relative;
+    z-index: 10;
+    font-family: 'Courier New', monospace;
+    font-size: clamp(24px, 8vw, 72px);
+    font-weight: bold;
+    color: ${pillColor === 'red' ? '#ff0040' : '#00bfff'};
+    text-shadow: 
+      0 0 10px ${pillColor === 'red' ? '#ff0040' : '#00bfff'},
+      0 0 20px ${pillColor === 'red' ? '#ff0040' : '#00bfff'},
+      0 0 40px ${pillColor === 'red' ? '#ff0000' : '#0080ff'};
+    transform: perspective(500px) rotateX(15deg);
+    animation: cinematicPulse 2s ease-in-out infinite;
+    text-align: center;
+    letter-spacing: 8px;
+  `;
+  text3d.innerHTML = `
+    <div style="font-size: 0.5em; margin-bottom: 20px; opacity: 0.8;">ZAGROS OSINT</div>
+    <div style="font-size: 1em;">${pillColor === 'red' ? 'GERÇEKLİK AÇILIYOR' : 'SİSTEME GİRİŞ'}</div>
+    <div style="font-size: 0.3em; margin-top: 30px; opacity: 0.6;">10 SANİYE...</div>
+  `;
+  
+  // Countdown
+  const countdown = document.createElement('div');
+  countdown.style.cssText = `
+    position: absolute;
+    bottom: 100px;
+    font-family: 'Courier New', monospace;
+    font-size: 48px;
+    color: #0f0;
+    text-shadow: 0 0 20px #0f0;
+    z-index: 10;
+  `;
+  countdown.textContent = '10';
+  
+  cinematic.appendChild(canvas);
+  cinematic.appendChild(text3d);
+  cinematic.appendChild(countdown);
+  document.body.appendChild(cinematic);
+  
+  // Hide the choice screen
+  if (theChoice) theChoice.classList.add('hidden');
+  
+  // Start Matrix rain animation
+  startCinematicMatrixRain(canvas);
+  
+  // 10 second countdown
+  let seconds = 10;
+  const countdownInterval = setInterval(() => {
+    seconds--;
+    countdown.textContent = seconds;
+    if (seconds <= 0) {
+      clearInterval(countdownInterval);
+      endCinematic();
+    }
+  }, 1000);
+  
+  // Add cinematic styles
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes cinematicPulse {
+      0%, 100% { transform: perspective(500px) rotateX(15deg) scale(1); opacity: 1; }
+      50% { transform: perspective(500px) rotateX(15deg) scale(1.05); opacity: 0.9; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// Matrix rain for cinematic
+function startCinematicMatrixRain(canvas) {
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  
+  const chars = '01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン';
+  const fontSize = 16;
+  const columns = canvas.width / fontSize;
+  const drops = Array(Math.floor(columns)).fill(1);
+  
+  let frameCount = 0;
+  const maxFrames = 600; // 10 seconds at 60fps
+  
+  function draw() {
+    frameCount++;
+    if (frameCount > maxFrames) return;
+    
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.fillStyle = '#0f0';
+    ctx.font = fontSize + 'px monospace';
+    
+    for (let i = 0; i < drops.length; i++) {
+      const text = chars[Math.floor(Math.random() * chars.length)];
+      ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+      
+      if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+        drops[i] = 0;
+      }
+      drops[i]++;
+    }
+    
+    requestAnimationFrame(draw);
+  }
+  
+  draw();
+}
+
+// End cinematic and show login
+function endCinematic() {
+  const cinematic = document.getElementById('matrix-cinematic');
+  if (cinematic) {
+    cinematic.style.transition = 'opacity 1s ease';
+    cinematic.style.opacity = '0';
+    setTimeout(() => {
+      cinematic.remove();
+      document.body.style.overflow = '';
+    }, 1000);
+  }
+  
+  // Mark as selected
+  localStorage.setItem('pillSelected', 'true');
+  
+  // Show auth card (login form)
+  show(authCard);
+}
+
+// Initialize - check if pill selection needed
+if (!localStorage.getItem('pillSelected')) {
+  // Show pill selection instead of auth card initially
+  hide(authCard);
+  setTimeout(showPillSelection, 500);
+} else {
+  // Normal flow - check auth
+  await checkAuth();
+}
