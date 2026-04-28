@@ -5002,7 +5002,7 @@ app.get('/api/guilds/discover', async (req, res) => {
   }
 });
 
-app.get('/api/guilds', async (req, res) => {
+app.get('/api/guilds', requireSubscription, async (req, res) => {
   const query = String(req.query?.q || '').trim();
   const limitParam = Number(req.query?.limit);
   const offsetParam = Number(req.query?.offset);
