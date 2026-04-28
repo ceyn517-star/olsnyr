@@ -26,7 +26,7 @@ function applyDarkMode(enabled) {
   if (toggle) toggle.checked = !!enabled;
 }
 
-// Intro Overlay (Matrix-like) before login
+// Intro Overlay (Matrix movie scene) before login
 function showIntroOverlay() {
   // Skip if already seen
   try { if (localStorage.getItem('zagros_intro_seen') === '1') return; } catch {}
@@ -35,62 +35,82 @@ function showIntroOverlay() {
   overlay.id = 'intro-overlay';
   overlay.style.cssText = `
     position: fixed; top:0; left:0; width:100vw; height:100vh; z-index:99999;
-    background:#000; display:flex; align-items:center; justify-content:center;
+    background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    overflow:hidden;
   `;
 
-  // Canvas for matrix rain
-  const canvas = document.createElement('canvas');
-  canvas.id = 'intro-matrix';
-  canvas.style.cssText = 'width:100%; height:100%; position: absolute; top:0; left:0;';
-  overlay.appendChild(canvas);
+  // Matrix movie scene video (red pill / blue pill scene)
+  const video = document.createElement('video');
+  video.id = 'intro-video';
+  video.autoplay = true;
+  video.muted = true;
+  video.loop = false;
+  video.playsInline = true;
+  video.style.cssText = `
+    position: absolute; top:0; left:0; width:100%; height:100%;
+    object-fit: cover; opacity: 0.85;
+  `;
+  // Matrix red pill / blue pill scene — royalty-free clip via archive.org
+  video.src = 'https://archive.org/download/matrix-pill-scene/matrix_pill.mp4';
+  // Fallback poster (Matrix green rain still) if video fails to load
+  video.poster = 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Matrix_digital_rain.jpg/800px-Matrix_digital_rain.jpg';
+  overlay.appendChild(video);
+
+  // Dark gradient overlay so text is readable
+  const gradient = document.createElement('div');
+  gradient.style.cssText = `
+    position: absolute; top:0; left:0; width:100%; height:100%;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.45) 0%, rgba(0,0,0,0.7) 100%);
+    z-index:1;
+  `;
+  overlay.appendChild(gradient);
 
   // Caption
   const caption = document.createElement('div');
-  caption.textContent = 'ZAGROS OSINT';
   caption.style.cssText = `
-    position: relative; z-index:2; color:#0f0; font-family: monospace; font-size: clamp(20px,5vw,48px);
-    text-shadow: 0 0 8px #0f0, 0 0 20px #0f0; letter-spacing:4px;
+    position: relative; z-index:2; text-align:center;
+    font-family: monospace; letter-spacing:4px;
+  `;
+  caption.innerHTML = `
+    <div style="color:#0f0; font-size:clamp(22px,5vw,52px); text-shadow:0 0 12px #0f0,0 0 30px #0f0; margin-bottom:12px;">
+      ZAGROS OSINT
+    </div>
+    <div style="color:rgba(0,255,0,0.7); font-size:clamp(11px,2vw,16px); letter-spacing:6px;">
+      YOU TAKE THE RED PILL — YOU STAY IN WONDERLAND
+    </div>
   `;
   overlay.appendChild(caption);
 
+  // Skip button
+  const skipBtn = document.createElement('button');
+  skipBtn.textContent = 'SKIP ▶';
+  skipBtn.style.cssText = `
+    position: absolute; bottom:28px; right:28px; z-index:3;
+    background:transparent; border:1px solid rgba(0,255,0,0.5); color:rgba(0,255,0,0.7);
+    font-family:monospace; font-size:12px; letter-spacing:2px; padding:6px 14px;
+    cursor:pointer; border-radius:4px; transition:all 0.2s;
+  `;
+  skipBtn.onmouseover = () => { skipBtn.style.background = 'rgba(0,255,0,0.15)'; };
+  skipBtn.onmouseout  = () => { skipBtn.style.background = 'transparent'; };
+  overlay.appendChild(skipBtn);
+
   document.body.appendChild(overlay);
 
-  // Matrix rain draw loop
-  const ctx = canvas.getContext('2d');
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲンABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  const fontSize = 16;
-  const columns = canvas.width / fontSize;
-  const drops = new Array(Math.floor(columns)).fill(0);
-  for (let i = 0; i < drops.length; i++) drops[i] = Math.floor(Math.random() * -20);
-  let frameReq = null;
-  function draw() {
-    ctx.fillStyle = 'rgba(0,0,0,0.05)';
-    ctx.fillRect(0,0,canvas.width, canvas.height);
-    ctx.fillStyle = '#0f0';
-    ctx.font = fontSize + 'px monospace';
-    for (let i = 0; i < drops.length; i++) {
-      const ch = chars[Math.floor(Math.random() * chars.length)];
-      ctx.fillText(ch, i * fontSize, drops[i] * fontSize);
-      if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
-      drops[i]++;
-    }
-    frameReq = requestAnimationFrame(draw);
+  function dismiss() {
+    overlay.style.transition = 'opacity 0.6s ease';
+    overlay.style.opacity = '0';
+    setTimeout(() => {
+      overlay.remove();
+      localStorage.setItem('zagros_intro_seen', '1');
+      const loginCard = document.getElementById('authCard');
+      if (loginCard) loginCard.classList.add('show');
+    }, 600);
   }
-  draw();
 
-  // Auto dismiss after ~7 seconds
-  setTimeout(() => {
-    try { cancelAnimationFrame(frameReq); } catch {}
-    overlay.remove();
-    localStorage.setItem('zagros_intro_seen','1');
-    // Show login UI (animate in if needed)
-    const loginCard = document.getElementById('authCard');
-    if (loginCard) {
-      loginCard.classList.add('show');
-    }
-  }, 7000);
+  skipBtn.addEventListener('click', dismiss);
+
+  // Auto dismiss after 7 seconds
+  setTimeout(dismiss, 7000);
 }
 
 // Manuel giriş elementleri
