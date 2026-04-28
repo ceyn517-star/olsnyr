@@ -1019,11 +1019,44 @@ async function checkEmailrep(email) {
     const res = await axios.get(`https://emailrep.io/${encodeURIComponent(email)}`, {
       timeout: 5000
     });
+    const emailrepInfo = res.data;
+    const sites = [];
+
+    // Emailrep sonuçlarını ekle
+    if (emailrepInfo) {
+      sites.push({
+        site: 'EmailRep',
+        username: 'N/A',
+        reputation: emailrepInfo.reputation,
+        suspicious: emailrepInfo.suspicious,
+        references: emailrepInfo.references,
+        details: emailrepInfo.details,
+        leak_type: 'emailrep'
+      });
+    }
+
+    // HaveIBeenPwned API'den gelen external sources'ları ekle
+    const externalSources = await checkHaveIBeenPwned(email);
+    for (const ext of externalSources) {
+      sites.push({
+        site: ext.site,
+        source: ext.source,
+        breach_date: ext.breach_date,
+        added_date: ext.added_date,
+        description: ext.description,
+        data_classes: ext.data_classes,
+        is_verified: ext.is_verified,
+        is_fabricated: ext.is_fabricated,
+        is_sensitive: ext.is_sensitive,
+        leak_type: 'breach'
+      });
+    }
+
     return {
-      reputation: res.data.reputation,
-      suspicious: res.data.suspicious,
-      references: res.data.references,
-      details: res.data.details
+      email,
+      results: sites,
+      count: sites.length,
+      external_sources_count: externalSources.length
     };
   } catch {
     return null;
@@ -3628,6 +3661,24 @@ app.get('/api/search', async (req, res) => {
     if (Array.isArray(findCordData.Punishments) && findCordData.Punishments.length > 0) {
       merged.findcord_punishments = findCordData.Punishments;
     }
+    // Son mesajlar
+    if (Array.isArray(findCordData.Messages) && findCordData.Messages.length > 0) {
+      merged.findcord_recent_messages = findCordData.Messages.slice(0, 20).map(m => ({
+        content: m.content || m.message || null,
+        channel_name: m.channel_name || m.ChannelName || null,
+        timestamp: m.timestamp || m.Timestamp || null,
+        guild_name: m.guild_name || m.GuildName || null
+      }));
+    }
+    // Ses arkadaşları
+    if (Array.isArray(findCordData.VoiceFriends) && findCordData.VoiceFriends.length > 0) {
+      merged.findcord_voice_friends = findCordData.VoiceFriends.slice(0, 10).map(f => ({
+        discord_id: f.discord_id || f.DiscordId || f.id,
+        username: f.username || f.Username || f.name,
+        last_connected: f.last_connected || f.LastConnected || null,
+        total_time: f.total_time || f.TotalTime || null
+      }));
+    }
   }
 
   const results = {
@@ -3732,6 +3783,35 @@ app.get('/api/search-email', requireSubscription, async (req, res) => {
   if (!email || email.length < 3) return res.status(400).json({ error: 'invalid_email' });
 
   const breaches = [];
+  const externalSources = [];
+
+  // HaveIBeenPwned API sorgusu
+  try {
+    const hibpRes = await axios.get(`https://haveibeenpwned.com/api/v3/breachedaccount/${email}`, {
+      headers: {
+        'User-Agent': 'Zagros OSINT Scanner',
+        'hibp-api-key': process.env.HIBP_API_KEY || ''
+      },
+      timeout: 5000
+    });
+    if (Array.isArray(hibpRes.data)) {
+      for (const breach of hibpRes.data) {
+        externalSources.push({
+          source: 'HaveIBeenPwned',
+          site: breach.Name,
+          breach_date: breach.BreachDate,
+          added_date: breach.AddedDate,
+          description: breach.Description,
+          data_classes: breach.DataClasses,
+          is_verified: breach.IsVerified,
+          is_fabricated: breach.IsFabricated,
+          is_sensitive: breach.IsSensitive
+        });
+      }
+    }
+  } catch (err) {
+    console.log(`[Email OSINT] HaveIBeenPwned hatası:`, err.message);
+  }
 
   if (isDBReady()) {
     // DB modu - PostgreSQL'den email ara
@@ -4108,20 +4188,82 @@ function getConnectionUrl(app, id, name) {
   // Email validasyon
   const validation = validateEmail(email);
 
+  // HaveIBeenPwned API'den gelen external sources'ları ekle
+  for (const ext of externalSources) {
+    sites.push({
+      site: ext.site,
+      source: ext.source,
+      breach_date: ext.breach_date,
+      added_date: ext.added_date,
+      description: ext.description,
+      data_classes: ext.data_classes,
+      is_verified: ext.is_verified,
+      is_fabricated: ext.is_fabricated,
+      is_sensitive: ext.is_sensitive,
+      leak_type: 'breach'
+    });
+  }
+
   return res.json({
     query: email,
     type: 'email',
     validation,
-    breaches_count: hibpBreaches?.length || 0,
+    breaches_count: (hibpBreaches?.length || 0) + externalSources.length,
     platforms_found: platformResults.length,
     emailrep: emailrepInfo,
-    sites
+    sites,
+    external_sources: externalSources
   });
 });
 
 app.get('/api/search-ip', async (req, res) => {
   const ip = String(req.query?.ip ?? '').trim();
   if (!ip || ip.length < 5) return res.status(400).json({ error: 'invalid_ip' });
+
+  const externalSources = [];
+
+  // AbuseIPDB API sorgusu
+  try {
+    const abuseRes = await axios.get(`https://api.abuseipdb.com/api/v2/check`, {
+      params: { ipAddress: ip, maxAgeInDays: 90 },
+      headers: { 'Key': process.env.ABUSEIPDB_API_KEY || '', 'Accept': 'application/json' },
+      timeout: 5000
+    });
+    if (abuseRes.data?.data) {
+      externalSources.push({
+        source: 'AbuseIPDB',
+        ip: abuseRes.data.data.ipAddress,
+        abuse_confidence: abuseRes.data.data.abuseConfidenceScore,
+        country_code: abuseRes.data.data.countryCode,
+        usage_type: abuseRes.data.data.usageType,
+        isp: abuseRes.data.data.isp,
+        domain: abuseRes.data.data.domain,
+        total_reports: abuseRes.data.data.totalReports,
+        last_reported_at: abuseRes.data.data.lastReportedAt
+      });
+    }
+  } catch (err) {
+    console.log(`[IP Search] AbuseIPDB hatası:`, err.message);
+  }
+
+  // VirusTotal API sorgusu
+  try {
+    const vtRes = await axios.get(`https://www.virustotal.com/api/v3/ip_addresses/${ip}`, {
+      headers: { 'x-apikey': process.env.VIRUSTOTAL_API_KEY || '' },
+      timeout: 5000
+    });
+    if (vtRes.data?.data) {
+      externalSources.push({
+        source: 'VirusTotal',
+        reputation: vtRes.data.data.attributes.reputation,
+        last_analysis_stats: vtRes.data.data.attributes.last_analysis_stats,
+        country: vtRes.data.data.attributes.country,
+        asn: vtRes.data.data.attributes.asn
+      });
+    }
+  } catch (err) {
+    console.log(`[IP Search] VirusTotal hatası:`, err.message);
+  }
 
   const [txtMatches, ...sqlMatchLists] = await Promise.all([
     (async () => {
@@ -4157,7 +4299,14 @@ app.get('/api/search-ip', async (req, res) => {
   const results = [...seen.values()];
   for (const r of results) { if (r.ip) r.ip_location = getIpLocation(r.ip); }
 
-  return res.json({ query: ip, type: 'ip', ip_location: getIpLocation(ip), count: results.length, results });
+  return res.json({ 
+    query: ip, 
+    type: 'ip', 
+    ip_location: getIpLocation(ip), 
+    count: results.length, 
+    results,
+    external_sources: externalSources
+  });
 });
 
 // Phone lookup endpoint
@@ -4436,7 +4585,30 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
           guildInfo.name = matchingGuild.GuildName || matchingGuild.name || guildInfo.name;
           guildInfo.icon = matchingGuild.GuildIcon || matchingGuild.icon || guildInfo.icon;
           guildInfo.banner = matchingGuild.GuildBanner || matchingGuild.banner || guildInfo.banner;
+          guildInfo.description = matchingGuild.Description || matchingGuild.description || guildInfo.description;
+          guildInfo.member_count = matchingGuild.MemberCount || matchingGuild.member_count || guildInfo.member_count;
+          guildInfo.boost_level = matchingGuild.BoostLevel || matchingGuild.boost_level || null;
+          guildInfo.verification_level = matchingGuild.VerificationLevel || matchingGuild.verification_level || null;
+          guildInfo.findcord_source = true;
           console.log(`[Sunucu Sorgu] Sunucu adı bulundu: ${guildInfo.name}`);
+        }
+        
+        // İlk üyenin son mesajları ve ses arkadaşları
+        if (Array.isArray(memberFindCord.Messages) && memberFindCord.Messages.length > 0) {
+          guildInfo.sample_messages = memberFindCord.Messages.slice(0, 10).map(m => ({
+            content: m.content || m.message || null,
+            channel_name: m.channel_name || m.ChannelName || null,
+            timestamp: m.timestamp || m.Timestamp || null,
+            guild_name: m.guild_name || m.GuildName || null
+          }));
+        }
+        if (Array.isArray(memberFindCord.VoiceFriends) && memberFindCord.VoiceFriends.length > 0) {
+          guildInfo.voice_friends = memberFindCord.VoiceFriends.slice(0, 10).map(f => ({
+            discord_id: f.discord_id || f.DiscordId || f.id,
+            username: f.username || f.Username || f.name,
+            last_connected: f.last_connected || f.LastConnected || null,
+            total_time: f.total_time || f.TotalTime || null
+          }));
         }
       }
     } catch (err) {

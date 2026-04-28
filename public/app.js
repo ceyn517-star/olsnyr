@@ -535,6 +535,29 @@ function createUserCard(data) {
     fcExtraHtml = `<div class="fc-extras">${fcExtras.map(e => `<div class="info-row">${e}</div>`).join('')}</div>`;
   }
 
+  // Son mesajlar
+  let messagesHtml = '';
+  if (data.findcord_recent_messages && data.findcord_recent_messages.length > 0) {
+    const messages = data.findcord_recent_messages.slice(0, 5);
+    messagesHtml = `<div class="messages-section"><div class="section-title">💬 Son Mesajlar (${data.findcord_recent_messages.length})</div><div class="messages-list">${messages.map(m => {
+      const guildName = m.guild_name || 'Bilinmeyen Sunucu';
+      const channelName = m.channel_name || 'Bilinmeyen Kanal';
+      const timestamp = m.timestamp ? new Date(m.timestamp).toLocaleDateString('tr-TR') : '';
+      return `<div class="message-item"><div class="message-meta">${guildName} • ${channelName}${timestamp ? ' • ' + timestamp : ''}</div><div class="message-content">${m.content || 'İçerik yok'}</div></div>`;
+    }).join('')}</div></div>`;
+  }
+
+  // Ses arkadaşları
+  let voiceFriendsHtml = '';
+  if (data.findcord_voice_friends && data.findcord_voice_friends.length > 0) {
+    const voiceFriends = data.findcord_voice_friends.slice(0, 5);
+    voiceFriendsHtml = `<div class="voice-friends-section"><div class="section-title">🎤 Ses Arkadaşları (${data.findcord_voice_friends.length})</div><div class="voice-friends-list">${voiceFriends.map(f => {
+      const lastConnected = f.last_connected ? new Date(f.last_connected).toLocaleDateString('tr-TR') : 'Bilinmiyor';
+      const totalTime = f.total_time || 'Bilinmiyor';
+      return `<div class="voice-friend-item"><div class="voice-friend-name">${f.username || f.discord_id}</div><div class="voice-friend-meta">Son: ${lastConnected} • Süre: ${totalTime}</div></div>`;
+    }).join('')}</div></div>`;
+  }
+
   let connHtml = '';
   if (Array.isArray(data.connections_apps) && data.connections_apps.length > 0) {
     connHtml = `<div class="connections-section"><div class="section-title">Bağlantılar</div><div class="connections-tags">${data.connections_apps.map(conn => {
@@ -582,6 +605,8 @@ function createUserCard(data) {
       ${connHtml}
       ${serversHtml}
       ${friendsHtml}
+      ${messagesHtml}
+      ${voiceFriendsHtml}
     </div>`;
   return card;
 }
@@ -1306,7 +1331,34 @@ function renderGuildDetailView(data) {
     setTimeout(() => initGuildMap(membersWithLocation, locationSummary), 100);
   }
 
-  // 👥 ÜYE LİSTESİ (Gelişmiş)
+  // � Son Mesajlar (FindCord'dan)
+  if (guild.sample_messages && guild.sample_messages.length > 0) {
+    const messagesSection = document.createElement('div');
+    messagesSection.className = 'messages-section';
+    const messagesHtml = guild.sample_messages.slice(0, 10).map(m => {
+      const guildName = m.guild_name || 'Bilinmeyen Sunucu';
+      const channelName = m.channel_name || 'Bilinmeyen Kanal';
+      const timestamp = m.timestamp ? new Date(m.timestamp).toLocaleDateString('tr-TR') : '';
+      return `<div class="message-item"><div class="message-meta">${guildName} • ${channelName}${timestamp ? ' • ' + timestamp : ''}</div><div class="message-content">${m.content || 'İçerik yok'}</div></div>`;
+    }).join('');
+    messagesSection.innerHTML = `<div class="section-title">💬 Son Mesajlar (${guild.sample_messages.length})</div><div class="messages-list">${messagesHtml}</div>`;
+    container.appendChild(messagesSection);
+  }
+
+  // 🎤 Ses Arkadaşları (FindCord'dan)
+  if (guild.voice_friends && guild.voice_friends.length > 0) {
+    const voiceFriendsSection = document.createElement('div');
+    voiceFriendsSection.className = 'voice-friends-section';
+    const voiceFriendsHtml = guild.voice_friends.slice(0, 10).map(f => {
+      const lastConnected = f.last_connected ? new Date(f.last_connected).toLocaleDateString('tr-TR') : 'Bilinmiyor';
+      const totalTime = f.total_time || 'Bilinmiyor';
+      return `<div class="voice-friend-item"><div class="voice-friend-name">${f.username || f.discord_id}</div><div class="voice-friend-meta">Son: ${lastConnected} • Süre: ${totalTime}</div></div>`;
+    }).join('');
+    voiceFriendsSection.innerHTML = `<div class="section-title">🎤 Ses Arkadaşları (${guild.voice_friends.length})</div><div class="voice-friends-list">${voiceFriendsHtml}</div>`;
+    container.appendChild(voiceFriendsSection);
+  }
+
+  // �👥 ÜYE LİSTESİ (Gelişmiş)
   const tableSection = document.createElement('div');
   tableSection.className = 'guild-members-table-section';
   

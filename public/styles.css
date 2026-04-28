@@ -911,6 +911,76 @@ button.ghost {
   transform: translateY(-1px);
 }
 
+/* Son Mesajlar Bölümü */
+.messages-section {
+  background: rgba(17, 17, 27, 0.5);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.message-item {
+  background: rgba(124, 58, 237, 0.05);
+  border: 1px solid rgba(124, 58, 237, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.message-meta {
+  font-size: 11px;
+  color: #a78bfa;
+  margin-bottom: 6px;
+}
+
+.message-content {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+/* Ses Arkadaşları Bölümü */
+.voice-friends-section {
+  background: rgba(17, 17, 27, 0.5);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.voice-friends-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.voice-friend-item {
+  background: rgba(124, 58, 237, 0.05);
+  border: 1px solid rgba(124, 58, 237, 0.1);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.voice-friend-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.voice-friend-meta {
+  font-size: 11px;
+  color: #a78bfa;
+}
+
 /* Sunucu Sorgu Stilleri */
 .guild-container {
   display: flex;
