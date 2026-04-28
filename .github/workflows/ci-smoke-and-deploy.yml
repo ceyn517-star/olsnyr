@@ -1,0 +1,22 @@
+name: CI Smoke and Deploy
+on:
+  push:
+  pull_request:
+    branches: [ main ]
+jobs:
+  smoke-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - name: Install
+        run: npm ci
+      - name: Run health check (local)
+        run: bash scripts/health_check.sh
+      - name: Trigger deploy (optional)
+        if: ${{ secrets.SSH_HOST && secrets.SSH_USER && secrets.SSH_KEY }}
+        run: bash scripts/deploy-prod.sh

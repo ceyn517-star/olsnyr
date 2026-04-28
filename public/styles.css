@@ -398,6 +398,45 @@ button.ghost {
   font-weight: 600;
 }
 
+/* Intro Video Overlay Styles */
+.intro-video {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #000;
+  z-index: 99999;
+}
+.intro-video video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.intro-3d-overlay {
+  position: absolute;
+  bottom: 8%;
+  left: 50%;
+  transform: translateX(-50%) rotateX(25deg) rotateY(-15deg);
+  width: 420px;
+  height: 240px;
+  perspective: 800px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.intro-3d-pill {
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(0,255,255,1) 0%, rgba(0,128,255,0.4) 40%, transparent 70%),
+              linear-gradient(135deg, rgba(0,0,0,0.3), rgba(0,0,0,0.8));
+  box-shadow: 0 0 60px rgba(0,255,255,0.8);
+  transform: translateZ(50px);
+}
+
 /* Dark mode enhancements */
 .dark-mode {
   --bg0: #0b0f15;

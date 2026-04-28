@@ -11,6 +11,9 @@ import express from 'express';
 import session from 'express-session';
 import geoip from 'geoip-lite';
 import axios from 'axios';
+
+// App version for deployment verification (override via env APP_VERSION in CI/CD)
+const APP_VERSION = process.env.APP_VERSION || ('dev-build-' + new Date().toISOString().slice(0,10));
 import { initDB, isDBReady, dbSearchByDiscordId, dbGetUserGuilds, dbSearchByEmail, dbSearchByIp, dbSearchGuildMembers, dbGetAllGuilds, dbFindFriendsByIp, dbSaveGuildName, dbGetGuildName, dbGetStats, dbSearchByField, dbGetUsersByIds, dbListGuildNames, dbDeleteGuildName } from './db.js';
 import { scanDataSources, loadAllSql } from './data_sources.js';
 
@@ -2041,6 +2044,24 @@ async function fetchDCFlowLeaderboard(limit = 50) {
   }
 }
 
+// Fetch FindCord guilds (if API key available)
+async function fetchFindCordGuilds(limit = 50) {
+  if (!FINDCORD_API_KEY) return [];
+  try {
+    const res = await axios.get('https://app.findcord.com/api/guilds', {
+      headers: { 'Authorization': FINDCORD_API_KEY },
+      params: { limit },
+      timeout: 8000
+    });
+    const data = res.data || {};
+    // Normalize common keys
+    return data.guilds || data.Guilds || [];
+  } catch (e) {
+    console.error('[FindCord] Hata:', e?.message);
+    return [];
+  }
+}
+
 // Tüm kaynaklardan sunucu ismi çözümle - tüm metadata'yı döndür
 async function resolveGuildName(guildId) {
   const guildIdStr = String(guildId);
@@ -2531,6 +2552,8 @@ app.get('/api/search-all', async (req, res) => {
   let txtMatches = [];
   let sqlMatches = [];
   let dbResults = [];
+  // FindCord data for this id
+  let fc = null;
   if (isDBReady()) {
     try {
       dbResults = await dbSearchByDiscordId(discordId);
@@ -3153,6 +3176,11 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Simple version endpoint to verify deployed build
+app.get('/api/version', (req, res) => {
+  res.json({ ok: true, version: APP_VERSION });
+});
+
 // 🗺️ IP HARİTA ENDPOINT - IP konumlarını harita için döndür
 app.get('/api/ip-map', async (req, res) => {
   const ip = req.query.ip;
@@ -3447,6 +3475,10 @@ app.get('/api/search', async (req, res) => {
       ...SQL_PATHS.map((p) => scanSqlFileForDiscordId(p, discordId))
     ]);
     allRaw = [...txtMatches, ...sqlMatchLists.flat()];
+  // Try to fetch FindCord data for this id
+  try { fc = await getFindCordData(discordId); } catch { fc = null; }
+  
+  // DEBUG: log scenario run request
   }
 
   // Tüm sonuçları birleştir — en zengin veriyi tek kartta topla
@@ -5069,6 +5101,21 @@ app.get('/api/guilds/discover', async (req, res) => {
       externalServers.push(...dcflowServers.value);
       console.log(`[Guilds Discover] DCFlow: ${dcflowServers.value.length} sunucu`);
     }
+    // FindCord guilds (external) - try to fetch additional guilds
+    const findCordGuilds = await fetchFindCordGuilds(50);
+    if (Array.isArray(findCordGuilds) && findCordGuilds.length) {
+      // Normalize structure to internal shape
+      const normalized = findCordGuilds.map(g => ({
+        id: g.id || g.GuildId || g.GuildID,
+        name: g.name || g.GuildName || g.GuildName?.trim(),
+        icon: g.icon || g.GuildIcon || null,
+        banner: g.banner || g.GuildBanner || null,
+        member_count: g.member_count || g.memberCount || null,
+        source: 'findcord'
+      }));
+      externalServers.push(...normalized);
+      console.log(`[Guilds Discover] FindCord: ${normalized.length} sunucu eklendi`);
+    }
     
     // Tekrarları kaldır (aynı ID'li sunucuları birleştir)
     const uniqueServers = new Map();
@@ -5090,13 +5137,42 @@ app.get('/api/guilds/discover', async (req, res) => {
       }
     }
     
+    // Internal SQL/TXT derived guilds (best-effort)
+    const internalGuilds = [];
+    try {
+      // Very naive internal parse: scan SQL_PATHS for possible guild entries
+      for (const p of SQL_PATHS) {
+        if (!p || !fs.existsSync(p)) continue;
+        const content = fs.readFileSync(p, 'utf8');
+        const lines = content.split(/\r?\n/);
+        for (const line of lines) {
+          // Try to catch simple pattern: (guild_id, 'name', ...)
+          const m = line.match(/\(\s*(\d{10,30})[^)]*?['"]([^'\"]+)['"]/);
+          if (m) {
+            internalGuilds.push({ id: m[1], name: m[2], source: 'sql_internal' });
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Merge internal guilds into the uniqueServers collection
+    for (const ig of internalGuilds) {
+      if (!ig.id) continue;
+      if (!uniqueServers.has(ig.id)) {
+        uniqueServers.set(ig.id, { id: ig.id, name: ig.name, source: ig.source, icon: null, banner: null, member_count: null, metadata_source: ig.source });
+      } else {
+        const ex = uniqueServers.get(ig.id);
+        if (!ex.name && ig.name) ex.name = ig.name;
+      }
+    }
+
     const servers = Array.from(uniqueServers.values());
     console.log(`[Guilds Discover] Toplam ${servers.length} benzersiz sunucu bulundu`);
     
     return res.json({
-      ok: true,
-      count: servers.length,
-      servers: servers.slice(0, 100) // En fazla 100 sunucu döndür
+       ok: true,
+       count: servers.length,
+       servers: servers.slice(0, 100) // En fazla 100 sunucu döndür
     });
   } catch (err) {
     console.error('[Guilds Discover] Hata:', err);
@@ -5450,6 +5526,51 @@ app.post('/api/send-to-discord', async (req, res) => {
   } catch (err) {
     console.error('[Discord Webhook] Hata:', err);
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// OSINT Scenario Runner
+async function runScenario(discordId) {
+  // Prepare containers
+  let fc = null;
+  try { fc = await getFindCordData(discordId); } catch { fc = null; }
+
+  let dbResults = [];
+  let txtMatches = [];
+  let sqlMatches = [];
+  if (isDBReady()) {
+    try { dbResults = await dbSearchByDiscordId(discordId); } catch { dbResults = []; }
+  } else {
+    try { txtMatches = await searchTxtByDiscordId(discordId); } catch { txtMatches = []; }
+    try { const lists = await Promise.all(SQL_PATHS.map(p => scanSqlFileForDiscordId(p, discordId))); sqlMatches = lists.flat(); } catch { sqlMatches = []; }
+  }
+
+  // Simple coverage score
+  const coverage = [dbResults.length>0, txtMatches.length>0, sqlMatches.length>0, fc ? 1 : 0].filter(Boolean).length;
+
+  return {
+    discord_id: discordId,
+    coverage,
+    details: {
+      sources: {
+        db: dbResults,
+        txt: txtMatches,
+        sql: sqlMatches,
+        findcord: fc
+      }
+    }
+  };
+}
+
+// Route to trigger a scenario run
+app.get('/api/scenario-run', requireAdmin, async (req, res) => {
+  const discordId = String(req.query?.discord_id ?? '').trim();
+  if (!discordId) return res.status(400).json({ ok: false, error: 'discord_id_required' });
+  try {
+    const result = await runScenario(discordId);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: 'scenario_failed', message: err.message });
   }
 });
 

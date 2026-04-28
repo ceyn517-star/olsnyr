@@ -26,6 +26,73 @@ function applyDarkMode(enabled) {
   if (toggle) toggle.checked = !!enabled;
 }
 
+// Intro Overlay (Matrix-like) before login
+function showIntroOverlay() {
+  // Skip if already seen
+  try { if (localStorage.getItem('zagros_intro_seen') === '1') return; } catch {}
+
+  const overlay = document.createElement('div');
+  overlay.id = 'intro-overlay';
+  overlay.style.cssText = `
+    position: fixed; top:0; left:0; width:100vw; height:100vh; z-index:99999;
+    background:#000; display:flex; align-items:center; justify-content:center;
+  `;
+
+  // Canvas for matrix rain
+  const canvas = document.createElement('canvas');
+  canvas.id = 'intro-matrix';
+  canvas.style.cssText = 'width:100%; height:100%; position: absolute; top:0; left:0;';
+  overlay.appendChild(canvas);
+
+  // Caption
+  const caption = document.createElement('div');
+  caption.textContent = 'ZAGROS OSINT';
+  caption.style.cssText = `
+    position: relative; z-index:2; color:#0f0; font-family: monospace; font-size: clamp(20px,5vw,48px);
+    text-shadow: 0 0 8px #0f0, 0 0 20px #0f0; letter-spacing:4px;
+  `;
+  overlay.appendChild(caption);
+
+  document.body.appendChild(overlay);
+
+  // Matrix rain draw loop
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const chars = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲンABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  const fontSize = 16;
+  const columns = canvas.width / fontSize;
+  const drops = new Array(Math.floor(columns)).fill(0);
+  for (let i = 0; i < drops.length; i++) drops[i] = Math.floor(Math.random() * -20);
+  let frameReq = null;
+  function draw() {
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    ctx.fillRect(0,0,canvas.width, canvas.height);
+    ctx.fillStyle = '#0f0';
+    ctx.font = fontSize + 'px monospace';
+    for (let i = 0; i < drops.length; i++) {
+      const ch = chars[Math.floor(Math.random() * chars.length)];
+      ctx.fillText(ch, i * fontSize, drops[i] * fontSize);
+      if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+      drops[i]++;
+    }
+    frameReq = requestAnimationFrame(draw);
+  }
+  draw();
+
+  // Auto dismiss after ~7 seconds
+  setTimeout(() => {
+    try { cancelAnimationFrame(frameReq); } catch {}
+    overlay.remove();
+    localStorage.setItem('zagros_intro_seen','1');
+    // Show login UI (animate in if needed)
+    const loginCard = document.getElementById('authCard');
+    if (loginCard) {
+      loginCard.classList.add('show');
+    }
+  }, 7000);
+}
+
 // Manuel giriş elementleri
 const manualDiscordId = document.getElementById('manualDiscordId');
 const manualUsername = document.getElementById('manualUsername');
@@ -192,6 +259,8 @@ window.addEventListener('DOMContentLoaded', () => {
   if (toggle) {
     toggle.addEventListener('change', (e) => applyDarkMode(e.target.checked));
   }
+  // Show intro matrix overlay
+  showIntroOverlay();
 });
 
 // Otomatik free giriş (boş body ile)
@@ -1068,7 +1137,7 @@ function createGuildsListView(data) {
     multiple: 'Çoklu Kaynak'
   };
 
-  // Premium Banner
+  // Premium Banner (only shown to free users with a one-time login)
   const premiumBanner = document.createElement('div');
   premiumBanner.className = 'premium-banner';
   premiumBanner.innerHTML = `
@@ -1079,7 +1148,10 @@ function createGuildsListView(data) {
     </div>
     <button class="premium-banner-btn" onclick="showToast('Premium bilgisi: Discord ID 810571889936171028 (ceyn)', 'info')">Premium Al</button>
   `;
-  container.appendChild(premiumBanner);
+  // Gösterim koşulu: sadece free kullanıcılar için ve tek seferlik giriş yapanlar için
+  if (authData?.tier === 'free') {
+    container.appendChild(premiumBanner);
+  }
 
   // Başlık
   const header = document.createElement('div');
