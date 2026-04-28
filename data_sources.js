@@ -1,0 +1,64 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+// Scan data directory to discover TXT and SQL sources
+export function scanDataSources(dataDir) {
+  let TXT_PATH = path.join(dataDir, 'dcıdsorgudata.txt');
+  let SQL_PATHS = [
+    path.join(dataDir, 'za.sql'),
+    path.join(dataDir, 'zagros.sql'),
+    path.join(dataDir, 'zagrs.sql'),
+    path.join(dataDir, 'discord data.sql'),
+  ];
+
+  try {
+    const entries = fs.readdirSync(dataDir, { withFileTypes: true });
+    const files = entries.filter(e => e.isFile()).map(e => e.name);
+
+    const sqlFiles = files.filter(n => n.toLowerCase().endsWith('.sql')).map(n => path.join(dataDir, n));
+    if (sqlFiles.length > 0) SQL_PATHS = sqlFiles;
+
+    if (!fs.existsSync(TXT_PATH)) {
+      const txtFiles = files.filter(n => n.toLowerCase().endsWith('.txt')).map(n => path.join(dataDir, n));
+      if (txtFiles.length > 0) TXT_PATH = txtFiles[0];
+    }
+  } catch (err) {
+    // ignore
+  }
+
+  return { TXT_PATH, SQL_PATHS };
+}
+
+// Load all SQL files into the database. Assumes a working DB connection via db.execSql.
+export async function loadAllSql(dataDir, sqlPaths) {
+  // In this environment we do not execute SQL files automatically.
+  // We simply verify that the files exist and are readable.
+  try {
+    for (const file of sqlPaths) {
+      try {
+        if (typeof file === 'string' && file) {
+          fs.accessSync(file, fs.constants.R_OK);
+        }
+      } catch (e) {
+        console.warn('[DataSources] SQL file unreadable:', file);
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('[DataSources] Failed to validate SQL files:', err.message);
+    return false;
+  }
+}
+
+// Simple TXT search for a given Discord ID
+export function searchTxtForDiscordId(txtPath, discordId) {
+  try {
+    if (!txtPath || !fs.existsSync(txtPath)) return [];
+    const content = fs.readFileSync(txtPath, 'utf8');
+    const lines = content.split(/\r?\n/).filter(l => l.includes(discordId));
+    // Return raw lines or parsed objects if possible; here we return lines for simplicity
+    return lines;
+  } catch {
+    return [];
+  }
+}

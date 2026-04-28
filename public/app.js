@@ -10,10 +10,21 @@ const resultsArea = document.getElementById('resultsArea');
 const loading = document.getElementById('loading');
 const noResults = document.getElementById('noResults');
 const statsBar = document.getElementById('statsBar');
-const historyList = null;
-const historySection = null;
-const historyListSidebar = null;
-const historySectionSidebar = null;
+ const historyList = null;
+ const historySection = null;
+ const historyListSidebar = null;
+ const historySectionSidebar = null;
+
+// Dark mode support
+function applyDarkMode(enabled) {
+  document.body.classList.toggle('dark-mode', !!enabled);
+  try {
+    localStorage.setItem('zagrosDarkMode', enabled ? '1' : '0');
+  } catch {}
+  // Update toggle UI if present
+  const toggle = document.getElementById('darkModeToggle');
+  if (toggle) toggle.checked = !!enabled;
+}
 
 // Manuel giriş elementleri
 const manualDiscordId = document.getElementById('manualDiscordId');
@@ -167,6 +178,21 @@ loginTabs.forEach(tab => {
 
 // Auto login button
 document.getElementById('autoLoginBtn').addEventListener('click', autoLogin);
+
+// Initialize dark mode on load
+window.addEventListener('DOMContentLoaded', () => {
+  try {
+    const saved = localStorage.getItem('zagrosDarkMode');
+    const isOn = saved === '1';
+    if (typeof applyDarkMode === 'function') {
+      applyDarkMode(isOn);
+    }
+  } catch {}
+  const toggle = document.getElementById('darkModeToggle');
+  if (toggle) {
+    toggle.addEventListener('change', (e) => applyDarkMode(e.target.checked));
+  }
+});
 
 // Otomatik free giriş (boş body ile)
 async function autoLogin() {
@@ -913,7 +939,8 @@ async function doSearch() {
     let data;
     const searchPromise = (async () => {
       if (searchMode === 'id') {
-        return await api(`/api/search?discord_id=${encodeURIComponent(query)}`, { method: 'GET' });
+        // Use consolidated endpoint
+        return await api(`/api/search-all?discord_id=${encodeURIComponent(query)}`, { method: 'GET' });
       } else if (searchMode === 'email') {
         return await api(`/api/search-email?email=${encodeURIComponent(query)}`, { method: 'GET' });
       } else if (searchMode === 'ip') {
@@ -931,9 +958,19 @@ async function doSearch() {
     hideLoading();
     
     if (searchMode === 'id') {
-      lastResult = data?.result;
-      if (!data?.result) show(noResults);
-      else { resultsArea.appendChild(createUserCard(data.result)); addToHistory(query, 'id'); }
+      // Expect consolidated results under data.results
+      const res = data?.results;
+      let candidate = null;
+      if (res) {
+        if (Array.isArray(res.db) && res.db.length) candidate = res.db[0];
+        if (!candidate && Array.isArray(res.txt) && res.txt.length) candidate = res.txt[0];
+        if (!candidate && res.discord_id) candidate = res;
+      } else {
+        candidate = data?.result || null;
+      }
+      lastResult = candidate;
+      if (!candidate) show(noResults);
+      else { resultsArea.appendChild(createUserCard(candidate)); addToHistory(query, 'id'); }
     } else if (searchMode === 'email') {
       lastResult = data;
       if (!data?.sites?.length) show(noResults);

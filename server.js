@@ -12,6 +12,7 @@ import session from 'express-session';
 import geoip from 'geoip-lite';
 import axios from 'axios';
 import { initDB, isDBReady, dbSearchByDiscordId, dbGetUserGuilds, dbSearchByEmail, dbSearchByIp, dbSearchGuildMembers, dbGetAllGuilds, dbFindFriendsByIp, dbSaveGuildName, dbGetGuildName, dbGetStats, dbSearchByField, dbGetUsersByIds, dbListGuildNames, dbDeleteGuildName } from './db.js';
+import { scanDataSources, loadAllSql } from './data_sources.js';
 
 // PostgreSQL bağlantısı (varsa)
 const DATABASE_URL = process.env.DATABASE_URL || '';
@@ -43,12 +44,16 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH 
   ? process.env.RAILWAY_VOLUME_MOUNT_PATH 
   : __dirname;
-let TXT_PATH = path.join(DATA_DIR, 'dcıdsorgudata.txt');
-let SQL_PATHS = [
-  path.join(DATA_DIR, 'discord data.sql'),
-  path.join(DATA_DIR, 'idsorgu(1).sql'),
-  path.join(DATA_DIR, '840k.sql')
-];
+const { TXT_PATH: _TXT_PATH, SQL_PATHS: _SQL_PATHS } = scanDataSources(DATA_DIR);
+let TXT_PATH = _TXT_PATH;
+let SQL_PATHS = _SQL_PATHS;
+let SQL_LOADED = false;
+async function ensureSqlLoaded() {
+  if (!SQL_LOADED) {
+    // Do not execute SQL here; rely on file-based lookups for data in this environment
+    SQL_LOADED = (Array.isArray(SQL_PATHS) && SQL_PATHS.length > 0);
+  }
+}
 
 function detectDataSources() {
   let txtPath = TXT_PATH;
@@ -2514,6 +2519,32 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Credentials', 'true');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
+});
+
+// Consolidated search across DB, TXT and SQL data sources
+app.get('/api/search-all', async (req, res) => {
+  const discordId = String(req.query?.discord_id ?? '').trim();
+  if (!discordId || !/\d{5,30}$/.test(discordId)) {
+    return res.status(400).json({ ok: false, error: 'invalid_discord_id' });
+  }
+  await ensureSqlLoaded();
+  let txtMatches = [];
+  let sqlMatches = [];
+  let dbResults = [];
+  if (isDBReady()) {
+    try {
+      dbResults = await dbSearchByDiscordId(discordId);
+    } catch { dbResults = []; }
+  } else {
+    try {
+      txtMatches = await searchTxtByDiscordId(discordId);
+    } catch { txtMatches = []; }
+    try {
+      const lists = await Promise.all(SQL_PATHS.map(p => scanSqlFileForDiscordId(p, discordId)));
+      sqlMatches = lists.flat();
+    } catch { sqlMatches = []; }
+  }
+  res.json({ ok: true, results: { discord_id: discordId, db: dbResults, txt: txtMatches, sql: sqlMatches } });
 });
 
 app.use(express.json({ limit: '1mb' }));

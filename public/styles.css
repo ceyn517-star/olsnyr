@@ -398,6 +398,23 @@ button.ghost {
   font-weight: 600;
 }
 
+/* Dark mode enhancements */
+.dark-mode {
+  --bg0: #0b0f15;
+  --bg1: #0e1117;
+  --card: rgba(20, 20, 20, 0.92);
+  --stroke: rgba(255, 255, 255, 0.18);
+  --text: #e8e8e8;
+  --muted: rgba(230, 230, 230, 0.75);
+}
+
+/* Apply to root elements when in dark mode for better contrast */
+.dark-mode .shell { filter: none; }
+.dark-mode .card { background: rgba(18, 18, 18, 0.95); border-color: rgba(255,255,255,0.12); }
+.dark-mode input, .dark-mode button { color: #e9e9e9; }
+.dark-mode .muted { color: rgba(230,230,230,0.8); }
+.dark-mode .guild-card-header, .dark-mode .guild-card-body { background: rgba(255,255,255,0.04); }
+
 /* Timeline */
 .osint-timeline {
   display: flex;
