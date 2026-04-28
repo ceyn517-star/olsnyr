@@ -979,6 +979,14 @@ function createGuildsListView(data) {
 
   const guilds = data.guilds || [];
   const totalCount = data.count || guilds.length;
+  const sourceLabels = {
+    database: 'Admin/DB',
+    directory: 'Sunucu Dizini',
+    widget: 'Discord Widget',
+    cache: 'Önbellek',
+    files: 'Arşiv',
+    external_resolver: 'Dış Kaynak'
+  };
 
   // Başlık
   const header = document.createElement('div');
@@ -1056,7 +1064,7 @@ function createGuildsListView(data) {
     
     // ID'yi kısalt göster (son 10 karakter daha kullanışlı)
     const shortId = g.id.length > 10 ? g.id.slice(0,4) + '...' + g.id.slice(-6) : g.id;
-    
+
     // Sample members avatarları (ilk 3 üye)
     let membersHtml = '';
     if (g.sample_members && g.sample_members.length > 0) {
@@ -1081,16 +1089,30 @@ function createGuildsListView(data) {
       `;
     }
     
+    const descText = g.description ? escapeHtml(g.description.length > 160 ? `${g.description.slice(0, 160)}…` : g.description) : '';
+    const descHtml = descText ? `<div class="guild-card-desc">${descText}</div>` : '';
+    const chipItems = [];
+    if (g.metadata_source && sourceLabels[g.metadata_source]) {
+      chipItems.push(`<span class="guild-card-chip">${sourceLabels[g.metadata_source]}</span>`);
+    }
+    if (g.metadata_updated_at) {
+      const updatedStr = new Date(g.metadata_updated_at).toLocaleDateString('tr-TR');
+      chipItems.push(`<span class="guild-card-chip">🕓 ${updatedStr}</span>`);
+    }
+    const chipsHtml = chipItems.length ? `<div class="guild-card-chips">${chipItems.join('')}</div>` : '';
+
     card.innerHTML = `
       ${iconHtml}
       <div class="guild-card-info">
         <div class="guild-card-name">${displayName}</div>
         ${!hasRealName ? `<div class="guild-id-hint">🔍 ${shortId}</div>` : ''}
         ${membersHtml}
+        ${descHtml}
         <div class="guild-card-meta">
           <span class="guild-card-count">👥 ${g.member_count} kayıt</span>
         </div>
         <div class="guild-card-source">📁 ${g.source === 'files' ? 'Arşiv (dosya)' : 'Veritabanı'}</div>
+        ${chipsHtml}
       </div>
       <div class="guild-card-arrow">→</div>
     `;
@@ -1109,6 +1131,13 @@ function renderGuildDetailView(data) {
   const guild = data.guild || {};
   const members = data.members || [];
   const locationSummary = data.location_summary || [];
+  const metadataSourceLabels = {
+    database: 'Admin/DB',
+    directory: 'Sunucu Dizini',
+    widget: 'Discord Widget',
+    cache: 'Önbellek',
+    files: 'Arşiv'
+  };
 
   const membersWithLocation = members.filter(m => m.ip_location && m.ip_location.lat && m.ip_location.lon);
 
@@ -1140,6 +1169,14 @@ function renderGuildDetailView(data) {
     guild.premium_tier ? `<span class="guild-detail-boost">⚡ Boost Seviye ${guild.premium_tier}</span>` : ''
   ].filter(Boolean);
 
+  if (guild.metadata_source) {
+    const label = metadataSourceLabels[guild.metadata_source] || guild.metadata_source;
+    metaItems.push(`<span class="guild-detail-meta-source">📌 ${label}</span>`);
+  }
+  if (guild.metadata_updated_at) {
+    metaItems.push(`<span class="guild-detail-meta-source">🕓 ${new Date(guild.metadata_updated_at).toLocaleDateString('tr-TR')}</span>`);
+  }
+
   headerCard.innerHTML = `
     <div class="guild-header-top">
       <div class="guild-back-btn" onclick="goBackToGuilds()">← Sunuculara Dön</div>
@@ -1150,7 +1187,7 @@ function renderGuildDetailView(data) {
         <div class="guild-detail-name">${(guild.name && guild.name !== 'Bilinmeyen Sunucu') ? guild.name : (guild.id ? `Sunucu #${String(guild.id).slice(-6)}` : 'Sunucu')}</div>
         ${guild.owner_id ? `<div class="guild-owner">👑 Sahip: ${guild.owner_id}</div>` : ''}
         <div class="guild-detail-meta">${metaItems.join('')}</div>
-        ${guild.description ? `<div class="guild-detail-description">${guild.description}</div>` : ''}
+        ${guild.description ? `<div class="guild-detail-description">${escapeHtml(guild.description)}</div>` : ''}
         ${guild.features?.length > 0 ? `<div class="guild-features">${guild.features.map(f => `<span class="feature-badge">${f}</span>`).join('')}</div>` : ''}
       </div>
     </div>

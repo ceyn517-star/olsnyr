@@ -249,7 +249,8 @@ export async function dbGetAllGuilds(options = {}) {
       description: row.description || null,
       member_count: parseInt(row.member_count, 10),
       sample_member_ids: (row.sample_member_ids || []).slice(0, 10),
-      updated_at: row.updated_at
+      metadata_source: (row.name || row.icon || row.banner || row.description) ? 'database' : null,
+      metadata_updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null
     })),
     total: Number(countRes.rows?.[0]?.count || 0)
   };

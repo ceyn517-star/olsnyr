@@ -567,6 +567,46 @@ async function performEmailOSINT(email) {
   return results;
 }
 
+async function enrichGuildsFromMembers(guilds, limit = 10) {
+  if (!Array.isArray(guilds) || guilds.length === 0) return;
+  if (Date.now() < findCordRateLimitedUntil) return;
+
+  const candidates = guilds
+    .filter(g => (!g.name || !g.icon || !g.description) && ((g.sample_member_ids && g.sample_member_ids.length) || (g.sample_members && g.sample_members.length)))
+    .slice(0, limit);
+
+  for (const guild of candidates) {
+    if (Date.now() < findCordRateLimitedUntil) break;
+    const sampleId = (guild.sample_member_ids && guild.sample_member_ids[0]) || (guild.sample_members && guild.sample_members[0]?.id);
+    if (!sampleId) continue;
+
+    try {
+      const fcData = await getFindCordData(sampleId);
+      if (!fcData?.Guilds?.length) continue;
+      const matchingGuild = fcData.Guilds.find(g =>
+        String(g.GuildId) === String(guild.id) || String(g.id) === String(guild.id)
+      );
+      if (!matchingGuild) continue;
+
+      const meta = {
+        name: matchingGuild.GuildName || matchingGuild.name,
+        icon: matchingGuild.GuildIcon || matchingGuild.icon || null,
+        banner: matchingGuild.GuildBanner || matchingGuild.banner || null,
+        description: matchingGuild.Description || matchingGuild.description || null
+      };
+
+      const changed = await applyGuildMetadata(guild, meta, 'directory');
+      if (changed) {
+        console.log(`[Guilds] 🔎 Katalog meta bulundu: ${guild.id} = ${guild.name}`);
+      }
+
+      await new Promise(r => setTimeout(r, 250));
+    } catch (err) {
+      console.log(`[Guilds] Directory enrich hata ${guild.id}:`, err.message);
+    }
+  }
+}
+
 // IP Geolocation - Detaylı konum bilgisi
 async function getIpGeolocation(ip) {
   try {
@@ -1218,6 +1258,56 @@ function rememberGuildName(guildId, name) {
   saveGuildNamesCache();
 }
 
+function stripHtml(input) {
+  if (!input) return '';
+  return String(input).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function sanitizeGuildMetadata(meta = {}) {
+  const cleaned = {};
+  if (meta.name) cleaned.name = String(meta.name).trim().slice(0, 120);
+  if (meta.icon) cleaned.icon = String(meta.icon).trim().slice(0, 512);
+  if (meta.banner) cleaned.banner = String(meta.banner).trim().slice(0, 512);
+  if (meta.description) cleaned.description = stripHtml(meta.description).slice(0, 800);
+  return cleaned;
+}
+
+async function applyGuildMetadata(guild, meta = {}, sourceLabel = null) {
+  if (!guild || !guild.id) return false;
+  const sanitized = sanitizeGuildMetadata(meta);
+  let changed = false;
+
+  if (sanitized.name && sanitized.name !== guild.name) {
+    guild.name = sanitized.name;
+    changed = true;
+  }
+  if (sanitized.icon && sanitized.icon !== guild.icon) {
+    guild.icon = sanitized.icon;
+    changed = true;
+  }
+  if (sanitized.banner && sanitized.banner !== guild.banner) {
+    guild.banner = sanitized.banner;
+    changed = true;
+  }
+  if (sanitized.description && sanitized.description !== guild.description) {
+    guild.description = sanitized.description;
+    changed = true;
+  }
+
+  if (sourceLabel) {
+    guild.metadata_source = sourceLabel;
+  }
+
+  ensureGuildVisuals(guild);
+
+  if (changed) {
+    guild.metadata_updated_at = new Date().toISOString();
+    await persistGuildMetadata(guild.id, sanitized);
+  }
+
+  return changed;
+}
+
 function buildGuildIconUrl(guildId, iconHash) {
   if (!guildId || !iconHash) return null;
   const ext = iconHash.startsWith('a_') ? 'gif' : 'png';
@@ -1332,10 +1422,18 @@ async function fetchDisboardInfo(guildId) {
       }
     });
     const html = res.data;
-    const nameMatch = html.match(new RegExp(`data-id="${guildId}"[^>]*>[^<]*<h3[^>]*>([^<]+)</h3`, 'i'));
-    if (nameMatch) {
-      return { name: nameMatch[1].trim(), source: 'disboard' };
-    }
+    const blockMatch = html.match(new RegExp(`<li[^>]*data-id="${guildId}"[\\s\\S]*?</li>`, 'i'));
+    if (!blockMatch) return null;
+    const block = blockMatch[0];
+    const nameMatch = block.match(/<h3[^>]*>([^<]+)<\/h3>/i);
+    const iconMatch = block.match(/data-background-image="([^"]+)"/i);
+    const descMatch = block.match(/<div[^>]*class="listing-description"[^>]*>([\s\S]*?)<\/div>/i);
+    return {
+      name: nameMatch?.[1]?.trim() || null,
+      icon: iconMatch ? (iconMatch[1].startsWith('http') ? iconMatch[1] : `https://disboard.org${iconMatch[1]}`) : null,
+      description: descMatch ? stripHtml(descMatch[1]) : null,
+      source: 'disboard'
+    };
   } catch { /* ignore */ }
   return null;
 }
@@ -1344,21 +1442,21 @@ async function fetchDisboardInfo(guildId) {
 async function resolveGuildName(guildId) {
   // Önce cache kontrol
   if (guildNamesCache.has(guildId)) {
-    return { name: guildNamesCache.get(guildId), source: 'cache' };
+    return { id: guildId, name: guildNamesCache.get(guildId), source: 'cache' };
   }
 
   // 1. Discord Widget API (en hızlı, public)
   const widget = await fetchDiscordWidget(guildId);
   if (widget?.name) {
     rememberGuildName(guildId, widget.name);
-    return { name: widget.name, icon: null, source: 'widget' };
+    return { id: guildId, name: widget.name, source: 'widget' };
   }
 
   // 2. Disboard.org (yedek)
   const disboard = await fetchDisboardInfo(guildId);
   if (disboard?.name) {
     rememberGuildName(guildId, disboard.name);
-    return { name: disboard.name, icon: null, source: 'disboard' };
+    return { id: guildId, name: disboard.name, icon: disboard.icon, description: disboard.description, source: 'disboard' };
   }
 
   return null;
@@ -3530,9 +3628,8 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
 
   try {
     const resolved = await resolveGuildName(guildId);
-    if (resolved?.name && !guildInfo.name) {
-      guildInfo.name = resolved.name;
-      await persistGuildMetadata(guildId, { name: resolved.name });
+    if (resolved) {
+      await applyGuildMetadata(guildInfo, resolved, resolved.source);
     }
   } catch { /* ignore */ }
 
@@ -3935,10 +4032,12 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
         );
 
         if (matchingGuild) {
-          guildInfo.name = matchingGuild.GuildName || matchingGuild.name || guildInfo.name;
-          guildInfo.icon = matchingGuild.GuildIcon || matchingGuild.icon || guildInfo.icon;
-          guildInfo.banner = matchingGuild.GuildBanner || matchingGuild.banner || guildInfo.banner;
-          guildInfo.description = matchingGuild.Description || matchingGuild.description || guildInfo.description;
+          await applyGuildMetadata(guildInfo, {
+            name: matchingGuild.GuildName || matchingGuild.name || guildInfo.name,
+            icon: matchingGuild.GuildIcon || matchingGuild.icon || guildInfo.icon,
+            banner: matchingGuild.GuildBanner || matchingGuild.banner || guildInfo.banner,
+            description: matchingGuild.Description || matchingGuild.description || guildInfo.description
+          }, 'directory');
           guildInfo.splash = matchingGuild.Splash || matchingGuild.splash;
           guildInfo.discovery_splash = matchingGuild.DiscoverySplash || matchingGuild.discovery_splash;
           guildInfo.owner_id = matchingGuild.OwnerId || matchingGuild.owner_id;
@@ -3952,13 +4051,6 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
           guildInfo.system_channel_id = matchingGuild.SystemChannelId || matchingGuild.system_channel_id;
           guildInfo.rules_channel_id = matchingGuild.RulesChannelId || matchingGuild.rules_channel_id;
           guildInfo.public_updates_channel_id = matchingGuild.PublicUpdatesChannelId || matchingGuild.public_updates_channel_id;
-          await persistGuildMetadata(guildId, {
-            name: guildInfo.name,
-            icon: guildInfo.icon,
-            banner: guildInfo.banner,
-            description: guildInfo.description
-          });
-
           console.log(`[Guild Search] Sunucu bilgileri zenginleştirildi: ${guildInfo.name}`);
         }
       }
@@ -4126,7 +4218,6 @@ app.get('/api/guilds', async (req, res) => {
           }
           return { id, username, avatar_url };
         });
-        delete g.sample_member_ids;
         ensureGuildVisuals(g);
         g.source = g.source || 'database';
       });
@@ -4217,21 +4308,25 @@ app.get('/api/guilds', async (req, res) => {
               : `https://cdn.discordapp.com/embed/avatars/${parseInt(member.id || '0', 10) % 5}.png`;
             return { id: member.id, username: member.username || `Üye #${member.id.slice(-4)}`, avatar_url: avatarUrl };
           });
-        delete guild.sample_member_ids;
+        guild.metadata_source = guild.metadata_source || 'files';
         ensureGuildVisuals(guild);
       }
     }
+
+    await enrichGuildsFromMembers(guilds, 12);
 
     const nameless = guilds.filter(g => !g.name || g.name === 'Bilinmeyen Sunucu').slice(0, 30);
     if (nameless.length > 0) {
       const resolved = await batchResolveGuildNames(nameless);
       for (const info of resolved) {
-        if (info.status === 'fulfilled' && info.value?.name) {
+        if (info.status === 'fulfilled' && info.value) {
           const target = guilds.find(g => g.id === info.value.id);
           if (target) {
-            target.name = info.value.name;
-            ensureGuildVisuals(target);
-            await persistGuildMetadata(target.id, { name: target.name });
+            await applyGuildMetadata(target, {
+              name: info.value.name,
+              icon: info.value.icon,
+              description: info.value.description
+            }, info.value.source);
           }
         }
       }
@@ -4241,8 +4336,11 @@ app.get('/api/guilds', async (req, res) => {
       if (!g.name) {
         g.name = `Sunucu #${g.id.slice(-6)}`;
       }
-      ensureGuildVisuals(g);
       delete g.sample_member_ids;
+      ensureGuildVisuals(g);
+      if (!g.metadata_source) {
+        g.metadata_source = source;
+      }
       delete g.findcord_guilds;
       delete g.findcord_enriched;
     });

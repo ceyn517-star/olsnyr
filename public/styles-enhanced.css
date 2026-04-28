@@ -1565,9 +1565,13 @@ body {
   font-size: 14px;
   color: #aaa;
   background: rgba(255,255,255,0.05);
-  padding: 6px 14px;
-  border-radius: 20px;
+  padding: 4px 10px;
+  border-radius: 999px;
   border: 1px solid #333;
+}
+
+.guild-detail-meta-source {
+  color: #a5b4fc !important;
 }
 
 .guild-detail-location {
