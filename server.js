@@ -204,19 +204,34 @@ async function downloadDataFiles() {
     { name: 'zagros6.sql', id: '1xestZYts7oTlAI-ECNvi3HQmZsMVeIM5' }
   ];
 
-  let downloaded = 0;
-  for (const { name, id } of files) {
+  // Sadece eksik/küçük dosyaları filtrele
+  const toDownload = files.filter(({ name }) => {
     const filePath = path.join(DATA_DIR, name);
     if (fs.existsSync(filePath) && fs.statSync(filePath).size > 1000) {
       console.log(`[Download] ${name} zaten var (${(fs.statSync(filePath).size / 1024 / 1024).toFixed(1)} MB), atlanıyor`);
-      continue;
+      return false;
     }
-    const ok = await downloadFromGDrive(id, filePath, name);
-    if (ok) downloaded++;
+    return true;
+  });
+
+  if (toDownload.length === 0) {
+    console.log('[Download] Tüm dosyalar mevcut, indirme atlanıyor.');
+    return;
   }
 
+  // Paralel indirme - tüm eksik dosyaları aynı anda indir
+  console.log(`[Download] ${toDownload.length} dosya paralel indiriliyor...`);
+  const results = await Promise.allSettled(
+    toDownload.map(({ name, id }) => {
+      const filePath = path.join(DATA_DIR, name);
+      return downloadFromGDrive(id, filePath, name);
+    })
+  );
+
+  const downloaded = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
+
   if (downloaded > 0) {
-    console.log(`[Download] ${downloaded} dosya indirildi, kaynaklar yeniden yükleniyor...`);
+    console.log(`[Download] ${downloaded}/${toDownload.length} dosya indirildi, kaynaklar yeniden yükleniyor...`);
     detectDataSources();
   }
 }
@@ -5869,10 +5884,9 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
-// Server başlat - önce eksik dosyaları indir
-(async () => {
-  await downloadDataFiles();
-  app.listen(APP_PORT, APP_HOST, () => {
-    console.log(`zagros running at http://${APP_HOST}:${APP_PORT}`);
-  });
-})();
+// Server başlat - hemen başlat, dosya indirme arka planda çalışsın
+app.listen(APP_PORT, APP_HOST, () => {
+  console.log(`zagros running at http://${APP_HOST}:${APP_PORT}`);
+  // Dosya indirmeyi arka planda başlat - health check'i bloklamaz
+  downloadDataFiles().catch(err => console.error('[Download] Arka plan indirme hatası:', err.message));
+});
