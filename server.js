@@ -9,8 +9,11 @@ import { setMaxListeners } from 'node:events';
 
 import express from 'express';
 import session from 'express-session';
+import FileStore from 'session-file-store';
 import geoip from 'geoip-lite';
 import axios from 'axios';
+
+const FileStoreSession = FileStore(session);
 
 // App version for deployment verification (override via env APP_VERSION in CI/CD)
 const APP_VERSION = process.env.APP_VERSION || ('dev-build-' + new Date().toISOString().slice(0,10));
@@ -133,61 +136,142 @@ async function sendToDiscordWebhook(webhookUrl, data) {
 }
 
 // 🌐 SQL/TXT dosyalarını otomatik indir (yoksa Google Drive'dan çeker)
+// Google Drive büyük dosya indirme - çoklu yöntem ve retry desteği
 async function downloadFromGDrive(fileId, destPath, fileName) {
-  // Google Drive büyük dosya onay bypass'ı
-  const baseUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-  try {
-    // İlk istek - küçük dosyalar direkt iner, büyükler onay sayfası döner
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 3000;
+
+  // Yardımcı: stream'i dosyaya yaz ve HTML onay sayfası kontrolü yap
+  async function writeStreamToFile(stream, filePath) {
+    const writer = fs.createWriteStream(filePath);
+    stream.pipe(writer);
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+      stream.on('error', reject);
+    });
+    const stat = fs.statSync(filePath);
+    if (stat.size < 10000) {
+      const content = fs.readFileSync(filePath, 'utf8').slice(0, 2000);
+      if (content.includes('<html') || content.includes('Google Drive') || content.includes('<!DOCTYPE')) {
+        fs.unlinkSync(filePath);
+        throw new Error('HTML_CONFIRMATION_PAGE');
+      }
+    }
+    return stat.size;
+  }
+
+  // Yöntem 1: Doğrudan export URL (küçük dosyalar)
+  async function tryDirectDownload() {
+    const url = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
+    const res = await axios.get(url, {
+      responseType: 'stream',
+      timeout: 600000,
+      maxRedirects: 10,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*'
+      }
+    });
+    return writeStreamToFile(res.data, destPath);
+  }
+
+  // Yöntem 2: Onay token'ı ile (büyük dosyalar için)
+  async function tryWithConfirmToken() {
+    const baseUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+    // Önce onay sayfasını al
     const firstRes = await axios.get(baseUrl, {
       responseType: 'text',
       timeout: 30000,
       maxRedirects: 5,
       headers: { 'User-Agent': 'Mozilla/5.0' }
     });
+    const html = String(firstRes.data);
 
-    // Onay token'ı var mı kontrol et (büyük dosyalar için)
-    let downloadUrl = baseUrl;
-    const confirmMatch = String(firstRes.data).match(/confirm=([0-9A-Za-z_-]+)/);
-    if (confirmMatch) {
-      downloadUrl = `${baseUrl}&confirm=${confirmMatch[1]}`;
-    } else if (String(firstRes.data).includes('download_warning')) {
-      downloadUrl = `${baseUrl}&confirm=t`;
+    // Token'ı farklı pattern'lerle ara
+    let confirmToken = null;
+    const patterns = [
+      /confirm=([0-9A-Za-z_-]+)/,
+      /name="confirm"\s+value="([^"]+)"/,
+      /"confirm":"([^"]+)"/
+    ];
+    for (const pat of patterns) {
+      const m = html.match(pat);
+      if (m) { confirmToken = m[1]; break; }
     }
 
-    console.log(`[Download] ${fileName} indiriliyor...`);
-    const response = await axios.get(downloadUrl, {
+    // UUID tabanlı yeni Google Drive indirme yöntemi
+    const uuidMatch = html.match(/uuid=([0-9a-f-]+)/);
+    if (uuidMatch) {
+      const downloadUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t&uuid=${uuidMatch[1]}`;
+      const res = await axios.get(downloadUrl, {
+        responseType: 'stream',
+        timeout: 600000,
+        maxRedirects: 10,
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      return writeStreamToFile(res.data, destPath);
+    }
+
+    const downloadUrl = confirmToken
+      ? `${baseUrl}&confirm=${confirmToken}`
+      : `${baseUrl}&confirm=t`;
+
+    const res = await axios.get(downloadUrl, {
       responseType: 'stream',
-      timeout: 600000, // 10 dakika
+      timeout: 600000,
       maxRedirects: 10,
       headers: { 'User-Agent': 'Mozilla/5.0' }
     });
+    return writeStreamToFile(res.data, destPath);
+  }
 
-    const writer = fs.createWriteStream(destPath);
-    response.data.pipe(writer);
-
-    await new Promise((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
+  // Yöntem 3: drive.usercontent.google.com (yeni API)
+  async function tryGoogleContentDownload() {
+    const url = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
+    const res = await axios.get(url, {
+      responseType: 'stream',
+      timeout: 600000,
+      maxRedirects: 10,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*'
+      }
     });
+    return writeStreamToFile(res.data, destPath);
+  }
 
-    // İndirilen dosya HTML onay sayfası mı kontrol et
-    const stat = fs.statSync(destPath);
-    if (stat.size < 10000) {
-      const content = fs.readFileSync(destPath, 'utf8');
-      if (content.includes('<html') || content.includes('Google Drive')) {
-        fs.unlinkSync(destPath);
-        console.error(`[Download] ${fileName} - Google Drive onay sayfası döndü, dosya indirilemedi`);
-        return false;
+  const methods = [
+    { name: 'GoogleContent', fn: tryGoogleContentDownload },
+    { name: 'DirectExport', fn: tryDirectDownload },
+    { name: 'ConfirmToken', fn: tryWithConfirmToken }
+  ];
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    for (const method of methods) {
+      try {
+        console.log(`[Download] ${fileName} - ${method.name} yöntemi (deneme ${attempt}/${MAX_RETRIES})...`);
+        const sizeBytes = await method.fn();
+        const sizeMB = (sizeBytes / 1024 / 1024).toFixed(1);
+        console.log(`[Download] ✅ ${fileName} tamamlandı (${sizeMB} MB) - ${method.name}`);
+        return true;
+      } catch (err) {
+        if (err.message === 'HTML_CONFIRMATION_PAGE') {
+          console.warn(`[Download] ${fileName} - ${method.name}: Google Drive onay sayfası döndü, sonraki yöntem deneniyor`);
+        } else {
+          console.warn(`[Download] ${fileName} - ${method.name} başarısız: ${err.message}`);
+        }
+        if (fs.existsSync(destPath)) { try { fs.unlinkSync(destPath); } catch { /* ignore */ } }
       }
     }
-
-    console.log(`[Download] ${fileName} tamamlandı (${(stat.size / 1024 / 1024).toFixed(1)} MB)`);
-    return true;
-  } catch (err) {
-    console.error(`[Download] ${fileName} hata:`, err.message);
-    if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
-    return false;
+    if (attempt < MAX_RETRIES) {
+      console.log(`[Download] ${fileName} - ${RETRY_DELAY_MS / 1000}sn bekleniyor, tekrar deneniyor...`);
+      await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+    }
   }
+
+  console.error(`[Download] ❌ ${fileName} - Tüm yöntemler başarısız oldu (${MAX_RETRIES} deneme)`);
+  return false;
 }
 
 async function downloadDataFiles() {
@@ -434,6 +518,196 @@ function requireSubscription(req, res, next) {
 // 🛡️ ZAGROS SUNUCU ÜYELİK KONTROLÜ
 const ZAGROS_GUILD_ID = '852952555869044808';
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || ''; // Discord bot token (opsiyonel)
+
+// 🎮 DISCORD API - Avatar, Banner, Guild Icon, Member Avatar
+// Discord CDN URL oluşturucular
+function discordAvatarUrl(userId, avatarHash, size = 128) {
+  if (!userId || !avatarHash) return null;
+  const ext = avatarHash.startsWith('a_') ? 'gif' : 'png';
+  return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.${ext}?size=${size}`;
+}
+
+function discordDefaultAvatarUrl(userId) {
+  // Yeni Discord sistemi: (BigInt(userId) >> 22n) % 6n
+  let index = 0;
+  try { index = Number(BigInt(userId) >> 22n) % 6; } catch { index = parseInt(userId) % 5; }
+  return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+}
+
+function discordGuildIconUrl(guildId, iconHash, size = 128) {
+  if (!guildId || !iconHash) return null;
+  const ext = iconHash.startsWith('a_') ? 'gif' : 'png';
+  return `https://cdn.discordapp.com/icons/${guildId}/${iconHash}.${ext}?size=${size}`;
+}
+
+function discordGuildBannerUrl(guildId, bannerHash, size = 512) {
+  if (!guildId || !bannerHash) return null;
+  const ext = bannerHash.startsWith('a_') ? 'gif' : 'png';
+  return `https://cdn.discordapp.com/banners/${guildId}/${bannerHash}.${ext}?size=${size}`;
+}
+
+function discordGuildSplashUrl(guildId, splashHash, size = 512) {
+  if (!guildId || !splashHash) return null;
+  return `https://cdn.discordapp.com/splashes/${guildId}/${splashHash}.png?size=${size}`;
+}
+
+function discordMemberAvatarUrl(guildId, userId, avatarHash, size = 128) {
+  if (!guildId || !userId || !avatarHash) return null;
+  const ext = avatarHash.startsWith('a_') ? 'gif' : 'png';
+  return `https://cdn.discordapp.com/guilds/${guildId}/users/${userId}/avatars/${avatarHash}.${ext}?size=${size}`;
+}
+
+function discordUserBannerUrl(userId, bannerHash, size = 512) {
+  if (!userId || !bannerHash) return null;
+  const ext = bannerHash.startsWith('a_') ? 'gif' : 'png';
+  return `https://cdn.discordapp.com/banners/${userId}/${bannerHash}.${ext}?size=${size}`;
+}
+
+// Discord API önbelleği (rate limit koruması)
+const discordApiCache = new Map();
+const DISCORD_CACHE_TTL = 10 * 60 * 1000; // 10 dakika
+
+// Discord API'den kullanıcı bilgisi çek (bot token gerektirir)
+async function fetchDiscordUser(userId) {
+  if (!DISCORD_BOT_TOKEN) return null;
+  const cacheKey = `user:${userId}`;
+  const cached = discordApiCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < DISCORD_CACHE_TTL) return cached.data;
+
+  try {
+    const res = await axios.get(`https://discord.com/api/v10/users/${userId}`, {
+      headers: {
+        'Authorization': `Bot ${DISCORD_BOT_TOKEN}`,
+        'Accept': 'application/json'
+      },
+      timeout: 5000
+    });
+    const data = res.data;
+    const enriched = {
+      id: data.id,
+      username: data.username,
+      global_name: data.global_name || null,
+      discriminator: data.discriminator || '0',
+      avatar: data.avatar || null,
+      avatar_url: data.avatar
+        ? discordAvatarUrl(data.id, data.avatar, 256)
+        : discordDefaultAvatarUrl(data.id),
+      banner: data.banner || null,
+      banner_url: data.banner ? discordUserBannerUrl(data.id, data.banner, 512) : null,
+      accent_color: data.accent_color || null,
+      bot: data.bot || false,
+      public_flags: data.public_flags || 0
+    };
+    discordApiCache.set(cacheKey, { time: Date.now(), data: enriched });
+    return enriched;
+  } catch (err) {
+    if (err.response?.status === 429) {
+      console.warn(`[Discord API] Rate limited - user ${userId}`);
+    } else if (err.response?.status !== 404) {
+      console.log(`[Discord API] User ${userId} hatası: ${err.message}`);
+    }
+    return null;
+  }
+}
+
+// Discord API'den guild bilgisi çek (bot token gerektirir)
+async function fetchDiscordGuild(guildId) {
+  if (!DISCORD_BOT_TOKEN) return null;
+  const cacheKey = `guild:${guildId}`;
+  const cached = discordApiCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < DISCORD_CACHE_TTL) return cached.data;
+
+  try {
+    const res = await axios.get(`https://discord.com/api/v10/guilds/${guildId}?with_counts=true`, {
+      headers: {
+        'Authorization': `Bot ${DISCORD_BOT_TOKEN}`,
+        'Accept': 'application/json'
+      },
+      timeout: 5000
+    });
+    const data = res.data;
+    const enriched = {
+      id: data.id,
+      name: data.name,
+      icon: data.icon || null,
+      icon_url: data.icon ? discordGuildIconUrl(data.id, data.icon, 256) : null,
+      banner: data.banner || null,
+      banner_url: data.banner ? discordGuildBannerUrl(data.id, data.banner, 512) : null,
+      splash: data.splash || null,
+      splash_url: data.splash ? discordGuildSplashUrl(data.id, data.splash, 512) : null,
+      description: data.description || null,
+      owner_id: data.owner_id || null,
+      member_count: data.approximate_member_count || data.member_count || null,
+      presence_count: data.approximate_presence_count || null,
+      premium_tier: data.premium_tier || 0,
+      premium_subscription_count: data.premium_subscription_count || 0,
+      features: data.features || [],
+      verification_level: data.verification_level || 0,
+      vanity_url_code: data.vanity_url_code || null
+    };
+    discordApiCache.set(cacheKey, { time: Date.now(), data: enriched });
+    return enriched;
+  } catch (err) {
+    if (err.response?.status === 429) {
+      console.warn(`[Discord API] Rate limited - guild ${guildId}`);
+    } else if (err.response?.status !== 404 && err.response?.status !== 403) {
+      console.log(`[Discord API] Guild ${guildId} hatası: ${err.message}`);
+    }
+    return null;
+  }
+}
+
+// Discord API'den guild üyesi bilgisi çek (bot token gerektirir)
+async function fetchDiscordGuildMember(guildId, userId) {
+  if (!DISCORD_BOT_TOKEN) return null;
+  const cacheKey = `member:${guildId}:${userId}`;
+  const cached = discordApiCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < DISCORD_CACHE_TTL) return cached.data;
+
+  try {
+    const res = await axios.get(`https://discord.com/api/v10/guilds/${guildId}/members/${userId}`, {
+      headers: {
+        'Authorization': `Bot ${DISCORD_BOT_TOKEN}`,
+        'Accept': 'application/json'
+      },
+      timeout: 5000
+    });
+    const data = res.data;
+    const user = data.user || {};
+    const enriched = {
+      user_id: user.id,
+      username: user.username || null,
+      global_name: user.global_name || null,
+      avatar: user.avatar || null,
+      avatar_url: user.avatar
+        ? discordAvatarUrl(user.id, user.avatar, 128)
+        : (user.id ? discordDefaultAvatarUrl(user.id) : null),
+      member_avatar: data.avatar || null,
+      member_avatar_url: data.avatar
+        ? discordMemberAvatarUrl(guildId, user.id, data.avatar, 128)
+        : null,
+      nick: data.nick || null,
+      roles: data.roles || [],
+      joined_at: data.joined_at || null,
+      premium_since: data.premium_since || null
+    };
+    discordApiCache.set(cacheKey, { time: Date.now(), data: enriched });
+    return enriched;
+  } catch (err) {
+    if (err.response?.status === 429) {
+      console.warn(`[Discord API] Rate limited - member ${guildId}/${userId}`);
+    }
+    return null;
+  }
+}
+
+// Discord önbelleğini periyodik temizle (bellek sızıntısını önle)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of discordApiCache.entries()) {
+    if (now - val.time > DISCORD_CACHE_TTL * 2) discordApiCache.delete(key);
+  }
+}, 15 * 60 * 1000); // 15 dakikada bir
 
 // ⚡ PERFORMANS AYARLARI
 const MAX_SEARCH_TIME = 8000;      // 8 saniye (normal aramalar)
@@ -1419,15 +1693,13 @@ async function applyGuildMetadata(guild, meta = {}, sourceLabel = null) {
 }
 
 function buildGuildIconUrl(guildId, iconHash) {
-  if (!guildId || !iconHash) return null;
-  const ext = iconHash.startsWith('a_') ? 'gif' : 'png';
-  return `https://cdn.discordapp.com/icons/${guildId}/${iconHash}.${ext}?size=128`;
+  // Yeni Discord CDN helper'ını kullan
+  return discordGuildIconUrl(guildId, iconHash, 256) || null;
 }
 
 function buildGuildBannerUrl(guildId, bannerHash) {
-  if (!guildId || !bannerHash) return null;
-  const ext = bannerHash.startsWith('a_') ? 'gif' : 'png';
-  return `https://cdn.discordapp.com/banners/${guildId}/${bannerHash}.${ext}?size=512`;
+  // Yeni Discord CDN helper'ını kullan
+  return discordGuildBannerUrl(guildId, bannerHash, 512) || null;
 }
 
 function ensureGuildVisuals(guild) {
@@ -1439,8 +1711,8 @@ function ensureGuildVisuals(guild) {
     guild.banner_url = guild.banner?.startsWith('http') ? guild.banner : buildGuildBannerUrl(guild.id, guild.banner);
   }
   if (!guild.icon_url) {
-    const hashSeed = parseInt(String(guild.id || '0'), 10) || 0;
-    const fallbackIndex = Math.abs(hashSeed) % 5;
+    // Varsayılan Discord avatar (yeni sistem: ID bazlı)
+    const fallbackIndex = guild.id ? (Number(BigInt(guild.id) >> 22n) % 6) : 0;
     guild.icon_url = `https://cdn.discordapp.com/embed/avatars/${fallbackIndex}.png`;
   }
   if (!guild.banner_url) {
@@ -2552,15 +2824,36 @@ async function scanSqlFileForDiscordId(sqlPath, discordId, maxHits = 50) {
   return matches;
 }
 
+const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RAILWAY_ENVIRONMENT;
+
 const app = express();
 app.disable('x-powered-by');
 
-// CORS - tüm origin'lere izin ver (local development)
+// 🌐 CORS - zagros.one ve diğer izinli origin'ler
+const ALLOWED_ORIGINS = [
+  'https://zagros.one',
+  'https://www.zagros.one',
+  'http://zagros.one',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
+
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  const origin = req.headers.origin;
+  // zagros.one veya izinli origin'lere izin ver
+  if (origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.zagros.one'))) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else if (!origin) {
+    // Same-origin istekler (tarayıcı direkt istek)
+    res.header('Access-Control-Allow-Origin', '*');
+  } else {
+    // Diğer origin'ler - geliştirme ortamında izin ver
+    res.header('Access-Control-Allow-Origin', isProduction ? 'https://zagros.one' : (origin || '*'));
+  }
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Token');
   res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Vary', 'Origin');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
@@ -2594,14 +2887,26 @@ app.get('/api/search-all', async (req, res) => {
 });
 
 app.use(express.json({ limit: '1mb' }));
+
+// 🗂️ SESSION STORE - Dosya tabanlı (MemoryStore uyarısını giderir, production-ready)
+const SESSION_DIR = path.join(DATA_DIR, 'sessions');
+try { if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true }); } catch { /* ignore */ }
+
 app.use(session({
-  secret: 'zagros-session-secret-v2',
+  store: new FileStoreSession({
+    path: SESSION_DIR,
+    ttl: 86400,          // 24 saat (saniye)
+    retries: 1,
+    logFn: () => {}      // Sessiz log - konsol kirliliğini önle
+  }),
+  secret: process.env.SESSION_SECRET || 'zagros-session-secret-v2',
   resave: false,
   saveUninitialized: false,
+  name: 'zagros.sid',
   cookie: {
     httpOnly: true,
-    secure: false, // Local development için false
-    sameSite: 'lax',
+    secure: isProduction,   // HTTPS (zagros.one) için true, local için false
+    sameSite: isProduction ? 'none' : 'lax',
     maxAge: 24 * 60 * 60 * 1000 // 24 saat
   }
 }));
@@ -3867,6 +4172,47 @@ app.get('/api/search', async (req, res) => {
     }
   }
 
+  // 🎮 Discord API ile zenginleştir (bot token varsa)
+  if (DISCORD_BOT_TOKEN && discordId) {
+    try {
+      const discordUser = await fetchDiscordUser(discordId);
+      if (discordUser) {
+        // Avatar - Discord API'den gelen öncelikli
+        if (!merged.findcord_avatar_url && discordUser.avatar_url) {
+          merged.enriched_avatar_url = discordUser.avatar_url;
+        }
+        // Banner - Discord API'den gelen öncelikli
+        if (!merged.findcord_banner_url && discordUser.banner_url) {
+          merged.enriched_banner_url = discordUser.banner_url;
+        }
+        // Username - Discord API'den gelen öncelikli
+        if (!merged.username && discordUser.username) {
+          merged.username = discordUser.username;
+        }
+        if (!merged.findcord_global_name && discordUser.global_name) {
+          merged.findcord_global_name = discordUser.global_name;
+        }
+        // Avatar hash
+        if (!merged.avatar_hash && discordUser.avatar) {
+          merged.avatar_hash = discordUser.avatar;
+        }
+        merged.discord_api_enriched = true;
+        console.log(`[Discord API] ✅ Kullanıcı zenginleştirildi: ${discordId}`);
+      }
+    } catch (err) {
+      console.log(`[Discord API] Kullanıcı zenginleştirme hatası ${discordId}: ${err.message}`);
+    }
+  }
+
+  // Avatar URL'i kesinleştir - en iyi kaynaktan al
+  if (!merged.enriched_avatar_url && !merged.findcord_avatar_url) {
+    if (merged.avatar_hash) {
+      merged.enriched_avatar_url = discordAvatarUrl(discordId, merged.avatar_hash, 256);
+    } else {
+      merged.enriched_avatar_url = discordDefaultAvatarUrl(discordId);
+    }
+  }
+
   const results = {
     discord_id: discordId,
     result: merged,
@@ -4987,15 +5333,19 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
     }
   }
 
-  // 🔥 Avatar URL'leri oluştur (tüm üyeler için)
+  // 🔥 Avatar URL'leri oluştur (tüm üyeler için) - Discord CDN
   for (const member of members) {
     if (member.avatar_hash) {
-      const ext = member.avatar_hash.startsWith('a_') ? 'gif' : 'png';
-      member.avatar_url = `https://cdn.discordapp.com/avatars/${member.discord_id}/${member.avatar_hash}.${ext}?size=128`;
+      // Sunucu özel avatar varsa önce onu dene
+      if (member.member_avatar) {
+        member.avatar_url = discordMemberAvatarUrl(guildId, member.discord_id, member.member_avatar, 128)
+          || discordAvatarUrl(member.discord_id, member.avatar_hash, 128);
+      } else {
+        member.avatar_url = discordAvatarUrl(member.discord_id, member.avatar_hash, 128);
+      }
     } else {
-      // Varsayılan avatar
-      const defaultIndex = parseInt(member.discord_id) % 5;
-      member.avatar_url = `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
+      // Varsayılan Discord avatar (yeni sistem)
+      member.avatar_url = discordDefaultAvatarUrl(member.discord_id);
     }
   }
 
@@ -5037,6 +5387,42 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
       }
     } catch (err) {
       console.log(`[Guild Search] Sunucu bilgisi çekme hatası:`, err.message);
+    }
+  }
+
+  // 🎮 Discord API ile sunucu bilgilerini zenginleştir (bot token varsa)
+  if (DISCORD_BOT_TOKEN && (!guildInfo.icon_url || !guildInfo.banner_url)) {
+    try {
+      const discordGuild = await fetchDiscordGuild(guildId);
+      if (discordGuild) {
+        if (!guildInfo.name || guildInfo.name === `Sunucu #${guildId.slice(-6)}`) {
+          guildInfo.name = discordGuild.name || guildInfo.name;
+        }
+        if (!guildInfo.icon && discordGuild.icon) {
+          guildInfo.icon = discordGuild.icon;
+          guildInfo.icon_url = discordGuild.icon_url;
+        }
+        if (!guildInfo.banner && discordGuild.banner) {
+          guildInfo.banner = discordGuild.banner;
+          guildInfo.banner_url = discordGuild.banner_url;
+        }
+        if (!guildInfo.description && discordGuild.description) {
+          guildInfo.description = discordGuild.description;
+        }
+        if (!guildInfo.member_count && discordGuild.member_count) {
+          guildInfo.member_count = discordGuild.member_count;
+        }
+        if (!guildInfo.premium_tier && discordGuild.premium_tier) {
+          guildInfo.premium_tier = discordGuild.premium_tier;
+        }
+        if (!guildInfo.features?.length && discordGuild.features?.length) {
+          guildInfo.features = discordGuild.features;
+        }
+        guildInfo.discord_api_enriched = true;
+        console.log(`[Discord API] ✅ Sunucu zenginleştirildi: ${guildId} = ${guildInfo.name}`);
+      }
+    } catch (err) {
+      console.log(`[Discord API] Sunucu zenginleştirme hatası ${guildId}: ${err.message}`);
     }
   }
 
@@ -5872,6 +6258,90 @@ app.get('/api/scenario-run', requireAdmin, async (req, res) => {
   } catch (err) {
     res.status(500).json({ ok: false, error: 'scenario_failed', message: err.message });
   }
+});
+
+// 🎮 Discord API Proxy Endpoint - Frontend için
+// Kullanıcı avatar/banner bilgisi çek
+app.get('/api/discord/user/:userId', async (req, res) => {
+  const userId = String(req.params.userId || '').trim();
+  if (!userId || !/^\d{10,30}$/.test(userId)) {
+    return res.status(400).json({ ok: false, error: 'invalid_user_id' });
+  }
+
+  // Önce CDN URL'lerini döndür (token olmasa bile)
+  const result = {
+    ok: true,
+    id: userId,
+    avatar_url: discordDefaultAvatarUrl(userId),
+    discord_api_available: !!DISCORD_BOT_TOKEN
+  };
+
+  if (DISCORD_BOT_TOKEN) {
+    const discordUser = await fetchDiscordUser(userId);
+    if (discordUser) {
+      Object.assign(result, discordUser);
+      result.ok = true;
+    }
+  }
+
+  return res.json(result);
+});
+
+// Guild icon/banner bilgisi çek
+app.get('/api/discord/guild/:guildId', async (req, res) => {
+  const guildId = String(req.params.guildId || '').trim();
+  if (!guildId || !/^\d{10,30}$/.test(guildId)) {
+    return res.status(400).json({ ok: false, error: 'invalid_guild_id' });
+  }
+
+  const result = {
+    ok: true,
+    id: guildId,
+    icon_url: null,
+    banner_url: null,
+    discord_api_available: !!DISCORD_BOT_TOKEN
+  };
+
+  if (DISCORD_BOT_TOKEN) {
+    const discordGuild = await fetchDiscordGuild(guildId);
+    if (discordGuild) {
+      Object.assign(result, discordGuild);
+      result.ok = true;
+    }
+  }
+
+  return res.json(result);
+});
+
+// Discord CDN URL oluşturucu (frontend için yardımcı)
+app.get('/api/discord/cdn', (req, res) => {
+  const { type, id, hash, size } = req.query;
+  const sz = parseInt(size) || 128;
+
+  let url = null;
+  switch (type) {
+    case 'avatar':
+      url = hash ? discordAvatarUrl(id, hash, sz) : discordDefaultAvatarUrl(id);
+      break;
+    case 'guild_icon':
+      url = discordGuildIconUrl(id, hash, sz);
+      break;
+    case 'guild_banner':
+      url = discordGuildBannerUrl(id, hash, sz);
+      break;
+    case 'user_banner':
+      url = discordUserBannerUrl(id, hash, sz);
+      break;
+    case 'member_avatar':
+      const { guild_id } = req.query;
+      url = discordMemberAvatarUrl(guild_id, id, hash, sz);
+      break;
+    default:
+      return res.status(400).json({ ok: false, error: 'invalid_type' });
+  }
+
+  if (!url) return res.status(404).json({ ok: false, error: 'not_found' });
+  return res.json({ ok: true, url });
 });
 
 app.use(express.static(path.join(__dirname, 'public')));

@@ -567,6 +567,28 @@ function getTagClass(app) {
 // Copy button helper (global scope)
 const copyBtn = (val) => val && val !== 'Bilinmiyor' ? `<button class="copy-btn" onclick="navigator.clipboard.writeText('${val.replace(/'/g, "\\'")}')">📋</button>` : '';
 
+// Discord CDN URL yardımcıları (frontend)
+function discordAvatarUrlFE(userId, avatarHash, size = 128) {
+  if (!userId || !avatarHash) return null;
+  const ext = avatarHash.startsWith('a_') ? 'gif' : 'png';
+  return `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.${ext}?size=${size}`;
+}
+function discordDefaultAvatarFE(userId) {
+  let index = 0;
+  try { index = Number(BigInt(userId) >> 22n) % 6; } catch { index = parseInt(userId || '0') % 5; }
+  return `https://cdn.discordapp.com/embed/avatars/${index}.png`;
+}
+function discordGuildIconFE(guildId, iconHash, size = 128) {
+  if (!guildId || !iconHash) return null;
+  const ext = iconHash.startsWith('a_') ? 'gif' : 'png';
+  return `https://cdn.discordapp.com/icons/${guildId}/${iconHash}.${ext}?size=${size}`;
+}
+function discordGuildBannerFE(guildId, bannerHash, size = 512) {
+  if (!guildId || !bannerHash) return null;
+  const ext = bannerHash.startsWith('a_') ? 'gif' : 'png';
+  return `https://cdn.discordapp.com/banners/${guildId}/${bannerHash}.${ext}?size=${size}`;
+}
+
 // Kart oluştur
 function createUserCard(data) {
   const card = document.createElement('div');
@@ -576,15 +598,33 @@ function createUserCard(data) {
   const initial = username[0].toUpperCase();
   const discordId = data.discord_id || '-';
 
-  // Profil fotoğrafı - önce zenginleştirilmiş kaynak, sonra Discord CDN, sonra baş harf
+  // Profil fotoğrafı - öncelik sırası:
+  // 1. Discord API'den gelen (enriched_avatar_url)
+  // 2. FindCord'dan gelen (findcord_avatar_url)
+  // 3. Avatar hash'ten oluşturulan Discord CDN URL
+  // 4. Varsayılan Discord avatar (ID bazlı)
+  // 5. Baş harf
+  let avatarUrl = null;
+  if (data.enriched_avatar_url) {
+    avatarUrl = data.enriched_avatar_url;
+  } else if (data.findcord_avatar_url) {
+    avatarUrl = data.findcord_avatar_url;
+  } else if (data.avatar_hash && data.avatar_hash !== 'N/A' && discordId !== '-') {
+    avatarUrl = discordAvatarUrlFE(discordId, data.avatar_hash, 256);
+  } else if (discordId !== '-') {
+    avatarUrl = discordDefaultAvatarFE(discordId);
+  }
+
   let avatarHtml;
-  if (data.enriched_avatar_url || data.findcord_avatar_url) {
-    const enrichedUrl = data.enriched_avatar_url || data.findcord_avatar_url;
-    avatarHtml = `<img class="avatar-img" src="${enrichedUrl}" onerror="this.outerHTML='<div class=\'avatar\'>${initial}</div>'" alt="">`;
-  } else if (data.avatar_hash && data.avatar_hash !== 'N/A') {
-    const ext = data.avatar_hash.startsWith('a_') ? 'gif' : 'png';
-    avatarHtml = `<img class="avatar-img" src="https://cdn.discordapp.com/avatars/${discordId}/${data.avatar_hash}.${ext}?size=128" onerror="this.outerHTML='<div class=\\'avatar\\'>${initial}</div>'" alt="">`;
-  } else { avatarHtml = `<div class="avatar">${initial}</div>`; }
+  if (avatarUrl) {
+    const fallbackUrl = discordId !== '-' ? discordDefaultAvatarFE(discordId) : null;
+    const fallbackHtml = fallbackUrl
+      ? `this.src='${fallbackUrl}'; this.onerror=null;`
+      : `this.outerHTML='<div class=\\'avatar\\'>${initial}</div>';`;
+    avatarHtml = `<img class="avatar-img" src="${avatarUrl}" onerror="${fallbackHtml}" alt="" loading="lazy">`;
+  } else {
+    avatarHtml = `<div class="avatar">${initial}</div>`;
+  }
 
   let badgesHtml = '';
   if (data.premium === '1' || data.premium === 'true' || data.subscription_type === 'enterprise' || data.subscription_type === 'pro') badgesHtml += '<span class="badge premium-badge">⭐ Premium</span>';
@@ -597,10 +637,11 @@ function createUserCard(data) {
     }
   }
 
-  // Ek banner
+  // Banner - Discord API'den gelen öncelikli, sonra FindCord
   let bannerStyle = '';
-  if (data.findcord_banner_url) {
-    bannerStyle = `background-image: url(${data.findcord_banner_url}); background-size: cover; background-position: center;`;
+  const bannerUrl = data.enriched_banner_url || data.findcord_banner_url;
+  if (bannerUrl) {
+    bannerStyle = `background-image: url(${bannerUrl}); background-size: cover; background-position: center;`;
   }
 
   // Ek kullanıcı adı + zamir
@@ -1203,8 +1244,10 @@ function createGuildsListView(data) {
     const card = document.createElement('div');
     card.className = 'guild-list-card';
     card.dataset.guildId = g.id;
-    if (g.banner_url) {
-      card.style.background = `linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.9)), url(${g.banner_url})`;
+    // Kart arkaplanı için banner URL (önce banner_url, sonra hash'ten oluştur)
+    const cardBannerUrl = g.banner_url || (g.banner && g.id ? discordGuildBannerFE(g.id, g.banner, 512) : null);
+    if (cardBannerUrl) {
+      card.style.background = `linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.9)), url(${cardBannerUrl})`;
       card.style.backgroundSize = 'cover';
       card.style.backgroundPosition = 'center';
     }
@@ -1255,26 +1298,31 @@ function createGuildsListView(data) {
     const iconBg = iconColors[colorIndex];
     
     // Icon URL varsa kullan, yoksa otomatik harf ikonu
+    // Icon URL - önce icon_url, sonra icon hash'ten oluştur, yoksa harf ikonu
+    let resolvedIconUrl = g.icon_url;
+    if (!resolvedIconUrl && g.icon && g.id) {
+      resolvedIconUrl = discordGuildIconFE(g.id, g.icon, 128);
+    }
     let iconHtml;
-    if (g.icon_url) {
-      iconHtml = `<img src="${g.icon_url}" class="guild-card-icon-img" onerror="this.outerHTML='<div class=\'guild-card-icon-auto\' style=\'background:${iconBg}\'>${iconLetter}</div>'" />`;
+    if (resolvedIconUrl) {
+      iconHtml = `<img src="${resolvedIconUrl}" class="guild-card-icon-img" onerror="this.outerHTML='<div class=\\'guild-card-icon-auto\\' style=\\'background:${iconBg}\\'>${iconLetter}</div>'" loading="lazy" />`;
     } else {
       iconHtml = `<div class="guild-card-icon-auto" style="background:${iconBg}">${iconLetter}</div>`;
     }
-    
-    // ID'yi kısalt göster (son 10 karakter daha kullanışlı)
-    const shortId = g.id.length > 10 ? g.id.slice(0,4) + '...' + g.id.slice(-6) : g.id;
 
-    // Sample members avatarları (ilk 3 üye)
+    // Sample members avatarları (ilk 3 üye) - Discord CDN
     let membersHtml = '';
     if (g.sample_members && g.sample_members.length > 0) {
       const avatars = g.sample_members.slice(0, 3).map(m => {
-        const avatarUrl = m.avatar_url || (m.avatar ? `https://cdn.discordapp.com/avatars/${m.id}/${m.avatar}.png?size=64` : null);
-        const defaultIndex = m.id ? parseInt(m.id) % 5 : 0;
-        const fallbackUrl = `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
+        // Avatar URL önceliği: avatar_url > avatar hash > varsayılan
+        let avatarUrl = m.avatar_url;
+        if (!avatarUrl && m.avatar && m.id) {
+          avatarUrl = discordAvatarUrlFE(m.id, m.avatar, 64);
+        }
+        const fallbackUrl = m.id ? discordDefaultAvatarFE(m.id) : 'https://cdn.discordapp.com/embed/avatars/0.png';
         const initial = (m.username || 'U')[0].toUpperCase();
         return avatarUrl 
-          ? `<img src="${avatarUrl}" class="member-avatar" onerror="this.src='${fallbackUrl}'" title="${m.username || 'İsimsiz'}" alt="${initial}" loading="lazy">`
+          ? `<img src="${avatarUrl}" class="member-avatar" onerror="this.src='${fallbackUrl}'; this.onerror=null;" title="${m.username || 'İsimsiz'}" alt="${initial}" loading="lazy">`
           : `<div class="member-avatar-placeholder" title="${m.username || 'İsimsiz'}">${initial}</div>`;
       }).join('');
       
@@ -1289,10 +1337,14 @@ function createGuildsListView(data) {
       `;
     }
     
-    // Banner varsa göster (kart üstünde)
+    // Banner varsa göster (kart üstünde) - önce banner_url, sonra banner hash'ten oluştur
+    let resolvedBannerUrl = g.banner_url;
+    if (!resolvedBannerUrl && g.banner && g.id) {
+      resolvedBannerUrl = discordGuildBannerFE(g.id, g.banner, 512);
+    }
     let bannerHtml = '';
-    if (g.banner_url) {
-      bannerHtml = `<div class="guild-card-banner" style="background-image:url('${g.banner_url}')"></div>`;
+    if (resolvedBannerUrl) {
+      bannerHtml = `<div class="guild-card-banner" style="background-image:url('${resolvedBannerUrl}')"></div>`;
     }
     
     const descText = g.description ? escapeHtml(g.description.length > 160 ? `${g.description.slice(0, 160)}…` : g.description) : '';
@@ -1368,17 +1420,29 @@ function renderGuildDetailView(data) {
   const headerCard = document.createElement('div');
   headerCard.className = 'guild-detail-header';
   
+  // Banner URL - önce banner_url, sonra banner hash'ten oluştur
+  let guildBannerUrl = guild.banner_url;
+  if (!guildBannerUrl && guild.banner && guild.id) {
+    guildBannerUrl = discordGuildBannerFE(guild.id, guild.banner, 512);
+  }
+
   // Banner arkaplan
-  if (guild.banner_url) {
-    headerCard.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.7), rgba(30,30,46,0.95)), url(${guild.banner_url})`;
+  if (guildBannerUrl) {
+    headerCard.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.7), rgba(30,30,46,0.95)), url(${guildBannerUrl})`;
     headerCard.style.backgroundSize = 'cover';
     headerCard.style.backgroundPosition = 'center';
   }
 
-  let iconUrl = guild.icon_url || guild.icon;
+  // Guild icon URL - önce icon_url, sonra icon hash'ten oluştur, yoksa varsayılan
+  let iconUrl = guild.icon_url;
+  if (!iconUrl && guild.icon && guild.id) {
+    iconUrl = discordGuildIconFE(guild.id, guild.icon, 256);
+  }
   if (!iconUrl && guild.id) {
-    const hash = guild.id.slice(-4);
-    iconUrl = `https://cdn.discordapp.com/embed/avatars/${parseInt(hash, 16) % 5}.png`;
+    // Varsayılan Discord avatar (ID bazlı)
+    let fallbackIdx = 0;
+    try { fallbackIdx = Number(BigInt(guild.id) >> 22n) % 6; } catch { fallbackIdx = parseInt(guild.id.slice(-4), 16) % 5; }
+    iconUrl = `https://cdn.discordapp.com/embed/avatars/${fallbackIdx}.png`;
   }
 
   // Kopyalama fonksiyonları
@@ -1395,8 +1459,8 @@ function renderGuildDetailView(data) {
   if (iconUrl) {
     quickCopyButtons.push(`<button class="quick-copy-btn" onclick="navigator.clipboard.writeText('${iconUrl}'); showToast('PP URL kopyalandı', 'success');" title="PP URL Kopyala">🖼️ PP Kopyala</button>`);
   }
-  if (guild.banner_url) {
-    quickCopyButtons.push(`<button class="quick-copy-btn" onclick="navigator.clipboard.writeText('${guild.banner_url}'); showToast('Banner URL kopyalandı', 'success');" title="Banner URL Kopyala">🎨 Banner Kopyala</button>`);
+  if (guildBannerUrl) {
+    quickCopyButtons.push(`<button class="quick-copy-btn" onclick="navigator.clipboard.writeText('${guildBannerUrl}'); showToast('Banner URL kopyalandı', 'success');" title="Banner URL Kopyala">🎨 Banner Kopyala</button>`);
   }
   quickCopyButtons.push(`<button class="quick-copy-btn" onclick="navigator.clipboard.writeText('${guild.id}'); showToast('ID kopyalandı: ${guild.id}', 'success');" title="ID Kopyala">📋 ID Kopyala</button>`);
 
