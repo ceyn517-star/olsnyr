@@ -1820,6 +1820,143 @@ async function fetchDiscadiaList(query = 'türk public') {
   }
 }
 
+// DCFlow.space'den sunucu bilgisi çek
+async function fetchDCFlowInfo(guildId) {
+  try {
+    // Önce sunucu detay sayfasını dene
+    const res = await axios.get(`https://dcflow.space/server/${guildId}`, {
+      timeout: 5000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    const html = res.data;
+    
+    // Sunucu ismi
+    let name = null;
+    const titleMatch = html.match(/<meta[^>]*property="og:title"[^>]*content="([^"]+)"/i);
+    if (titleMatch) {
+      name = titleMatch[1].trim();
+    }
+    if (!name) {
+      const h1Match = html.match(/<h1[^>]*class="[^"]*server-name[^"]*"[^>]*>([^<]+)<\/h1>/i) ||
+                      html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+      if (h1Match) name = h1Match[1].trim();
+    }
+    
+    // Açıklama
+    let description = null;
+    const descMatch = html.match(/<meta[^>]*name="description"[^>]*content="([^"]+)"/i) ||
+                      html.match(/<meta[^>]*property="og:description"[^>]*content="([^"]+)"/i);
+    if (descMatch) {
+      description = descMatch[1].trim().slice(0, 500);
+    }
+    
+    // İkon
+    let icon = null;
+    const iconMatch = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i) ||
+                      html.match(/<img[^>]*class="[^"]*server-icon[^"]*"[^>]*src="([^"]+)"/i) ||
+                      html.match(/<img[^>]*class="[^"]*avatar[^"]*"[^>]*src="([^"]+)"/i);
+    if (iconMatch) {
+      icon = iconMatch[1];
+      if (!icon.startsWith('http')) {
+        icon = `https://dcflow.space${icon}`;
+      }
+    }
+    
+    // Banner
+    let banner = null;
+    const bannerMatch = html.match(/<div[^>]*class="[^"]*banner[^"]*"[^>]*style="[^"]*background[^"]*url\(([^)]+)\)/i) ||
+                        html.match(/background-image:\s*url\(['"]?([^'"]+)['"]?\)/i) ||
+                        html.match(/<img[^>]*class="[^"]*banner[^"]*"[^>]*src="([^"]+)"/i);
+    if (bannerMatch) {
+      banner = bannerMatch[1].replace(/['"]/g, '');
+      if (!banner.startsWith('http')) {
+        banner = `https://dcflow.space${banner}`;
+      }
+    }
+    
+    if (!name) return null;
+    
+    return {
+      name,
+      icon,
+      banner,
+      description,
+      source: 'dcflow'
+    };
+  } catch (err) {
+    console.log(`[DCFlow] Hata ${guildId}:`, err.message);
+  }
+  return null;
+}
+
+// DCFlow.space leaderboard'dan sunucu listesi çek
+async function fetchDCFlowLeaderboard(limit = 50) {
+  try {
+    const res = await axios.get(`https://dcflow.space/leaderboard`, {
+      timeout: 8000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    const html = res.data;
+    const servers = [];
+    
+    // Leaderboard satırlarını bul - genellikle tablo veya liste formatında
+    const serverBlocks = [...html.matchAll(/<tr[^>]*>[\s\S]*?<\/tr>/gi)];
+    
+    for (const blockMatch of serverBlocks.slice(0, limit)) {
+      const block = blockMatch[0];
+      
+      // Guild ID - data attribute veya linkten
+      const idMatch = block.match(/data-id="(\d+)"/i) ||
+                      block.match(/href="\/server\/(\d+)"/i) ||
+                      block.match(/href="[^"]*discord\.gg\/[^"]*(\d{17,20})/i);
+      const id = idMatch?.[1];
+      
+      // İsim
+      const nameMatch = block.match(/<td[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/td>/i) ||
+                       block.match(/<a[^>]*>([^<]+)<\/a>/i) ||
+                       block.match(/<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/i);
+      const name = nameMatch?.[1]?.trim();
+      
+      // İkon
+      const iconMatch = block.match(/<img[^>]*src="([^"]+\.(?:png|jpg|jpeg|gif|webp)[^"]*)"/i) ||
+                       block.match(/<img[^>]*data-src="([^"]+)"/i);
+      let icon = iconMatch?.[1];
+      if (icon && !icon.startsWith('http')) {
+        icon = `https://dcflow.space${icon}`;
+      }
+      
+      // Üye sayısı (varsa)
+      const memberMatch = block.match(/<td[^>]*>([\d,]+)\s*(?:members|üye)<\/td>/i) ||
+                         block.match(/([\d,]+)\s*(?:members|üye)/i);
+      const member_count = memberMatch ? parseInt(memberMatch[1].replace(/,/g, '')) : null;
+      
+      if (id && name) {
+        servers.push({
+          id,
+          name,
+          icon,
+          member_count,
+          source: 'dcflow_leaderboard'
+        });
+        // Cache'e ekle
+        rememberGuildName(id, name);
+      }
+    }
+    
+    console.log(`[DCFlow Leaderboard] ${servers.length} sunucu bulundu`);
+    return servers;
+  } catch (err) {
+    console.log(`[DCFlow Leaderboard] Hata:`, err.message);
+    return [];
+  }
+}
+
 // Tüm kaynaklardan sunucu ismi çözümle - tüm metadata'yı döndür
 async function resolveGuildName(guildId) {
   const guildIdStr = String(guildId);
@@ -1888,6 +2025,20 @@ async function resolveGuildName(guildId) {
       banner: discadia.banner,
       description: discadia.description,
       source: 'discadia'
+    };
+  }
+
+  // 6. DCFlow.space - isim, icon, banner, description
+  const dcflow = await fetchDCFlowInfo(guildIdStr);
+  if (dcflow?.name) {
+    rememberGuildName(guildIdStr, dcflow.name);
+    return {
+      id: guildIdStr,
+      name: dcflow.name,
+      icon: dcflow.icon,
+      banner: dcflow.banner,
+      description: dcflow.description,
+      source: 'dcflow'
     };
   }
 
@@ -4647,18 +4798,25 @@ app.get('/api/guilds/discover', async (req, res) => {
     console.log('[Guilds Discover] Dış kaynaklardan sunucu listesi çekiliyor...');
     
     // Paralel olarak tüm kaynaklardan çek
-    const [disboardServers, discadiaServers] = await Promise.allSettled([
+    const [disboardServers, discadiaServers, dcflowServers] = await Promise.allSettled([
       fetchDisboardTagList('türk'),
-      fetchDiscadiaList('türk public')
+      fetchDiscadiaList('türk public'),
+      fetchDCFlowLeaderboard(50)
     ]);
     
     const externalServers = [];
     
     if (disboardServers.status === 'fulfilled' && disboardServers.value) {
       externalServers.push(...disboardServers.value);
+      console.log(`[Guilds Discover] Disboard: ${disboardServers.value.length} sunucu`);
     }
     if (discadiaServers.status === 'fulfilled' && discadiaServers.value) {
       externalServers.push(...discadiaServers.value);
+      console.log(`[Guilds Discover] Discadia: ${discadiaServers.value.length} sunucu`);
+    }
+    if (dcflowServers.status === 'fulfilled' && dcflowServers.value) {
+      externalServers.push(...dcflowServers.value);
+      console.log(`[Guilds Discover] DCFlow: ${dcflowServers.value.length} sunucu`);
     }
     
     // Tekrarları kaldır (aynı ID'li sunucuları birleştir)
@@ -4668,10 +4826,13 @@ app.get('/api/guilds/discover', async (req, res) => {
       if (!existing) {
         uniqueServers.set(server.id, server);
       } else {
-        // Metadata'yı birleştir
+        // Metadata'yı birleştir - en iyi veriyi tut
         if (!existing.icon && server.icon) existing.icon = server.icon;
         if (!existing.banner && server.banner) existing.banner = server.banner;
         if (!existing.description && server.description) existing.description = server.description;
+        if (server.member_count && (!existing.member_count || server.member_count > existing.member_count)) {
+          existing.member_count = server.member_count;
+        }
         if (server.source && !existing.source.includes(server.source)) {
           existing.source = `${existing.source},${server.source}`;
         }
@@ -4679,12 +4840,12 @@ app.get('/api/guilds/discover', async (req, res) => {
     }
     
     const servers = Array.from(uniqueServers.values());
-    console.log(`[Guilds Discover] ${servers.length} benzersiz sunucu bulundu`);
+    console.log(`[Guilds Discover] Toplam ${servers.length} benzersiz sunucu bulundu`);
     
     return res.json({
       ok: true,
       count: servers.length,
-      servers: servers.slice(0, 50) // En fazla 50 sunucu döndür
+      servers: servers.slice(0, 100) // En fazla 100 sunucu döndür
     });
   } catch (err) {
     console.error('[Guilds Discover] Hata:', err);

@@ -989,6 +989,8 @@ function createGuildsListView(data) {
     discordservers: 'DiscordServers',
     discadia: 'Discadia',
     'discadia_list': 'Discadia (Liste)',
+    dcflow: 'DCFlow',
+    'dcflow_leaderboard': 'DCFlow Leaderboard',
     cache: 'Önbellek',
     files: 'Arşiv',
     external_resolver: 'Dış Kaynak'
@@ -1147,6 +1149,8 @@ function renderGuildDetailView(data) {
     discordservers: 'DiscordServers',
     discadia: 'Discadia',
     'discadia_list': 'Discadia (Liste)',
+    dcflow: 'DCFlow',
+    'dcflow_leaderboard': 'DCFlow Leaderboard',
     cache: 'Önbellek',
     files: 'Arşiv'
   };
