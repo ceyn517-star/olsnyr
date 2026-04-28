@@ -217,7 +217,7 @@ async function downloadDataFiles() {
 
 detectDataSources();
 
-const APP_PORT = process.env.PORT ? Number(process.env.PORT) : 5178;
+const APP_PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const APP_HOST = process.env.HOST ?? (process.env.RAILWAY_ENVIRONMENT ? '0.0.0.0' : '127.0.0.1');
 const SITE_PASSWORD = process.env.ZAGROS_PASSWORD ?? 'zagros31ceyn';
 const FINDCORD_API_KEY = '1fb785c3eb8069ba341836e0b25dabb4b20e439b4bce300123da1f791f12a3ea';
@@ -2576,7 +2576,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(session({
   secret: 'zagros-session-secret-v2',
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false,
   cookie: {
     httpOnly: true,
     secure: false, // Local development için false
@@ -5446,6 +5446,223 @@ app.get('/api/guilds', requireSubscription, async (req, res) => {
     console.error('[Guilds] Hata:', err);
     return res.status(500).json({ error: 'guilds_failed', message: err.message });
   }
+});
+
+// GET /api/guild/:id - Guild details (name, icon, description, member count)
+app.get('/api/guild/:id', requireSubscription, async (req, res) => {
+  const guildId = String(req.params.id || '').trim();
+  if (!guildId || !/^\d{10,30}$/.test(guildId)) {
+    return res.status(400).json({ ok: false, error: 'invalid_guild_id' });
+  }
+
+  const guildInfo = {
+    id: guildId,
+    name: null,
+    icon: null,
+    icon_url: null,
+    banner: null,
+    banner_url: null,
+    description: null,
+    member_count: 0
+  };
+
+  // 1. Check in-memory name cache first
+  if (guildNamesCache.has(guildId)) {
+    guildInfo.name = guildNamesCache.get(guildId);
+  }
+
+  // 2. Check DB guild_cache
+  if (isDBReady()) {
+    try {
+      const cachedMeta = await dbGetGuildName(guildId);
+      if (cachedMeta) {
+        guildInfo.name = cachedMeta.name || guildInfo.name;
+        guildInfo.icon = cachedMeta.icon || guildInfo.icon;
+        guildInfo.banner = cachedMeta.banner || guildInfo.banner;
+        guildInfo.description = cachedMeta.description || guildInfo.description;
+      }
+      // Get member count from user_guilds
+      const dbResult = await dbGetAllGuilds({ searchTerm: guildId, limit: 1, offset: 0 });
+      const match = dbResult.guilds.find(g => g.id === guildId);
+      if (match) guildInfo.member_count = match.member_count || 0;
+    } catch (err) {
+      console.log(`[Guild Detail] DB hatası: ${err.message}`);
+    }
+  }
+
+  // 3. Try to resolve name if still unknown
+  if (!guildInfo.name) {
+    try {
+      const resolved = await resolveGuildName(guildId);
+      if (resolved) {
+        await applyGuildMetadata(guildInfo, resolved, resolved.source);
+      }
+    } catch { /* ignore */ }
+  }
+
+  if (!guildInfo.name) {
+    guildInfo.name = `Sunucu #${guildId.slice(-6)}`;
+  }
+
+  ensureGuildVisuals(guildInfo);
+
+  return res.json({ ok: true, guild: guildInfo });
+});
+
+// GET /api/guild/:id/members - Members of a guild
+app.get('/api/guild/:id/members', requireSubscription, async (req, res) => {
+  const guildId = String(req.params.id || '').trim();
+  if (!guildId || !/^\d{10,30}$/.test(guildId)) {
+    return res.status(400).json({ ok: false, error: 'invalid_guild_id' });
+  }
+
+  const limitParam = Number(req.query?.limit);
+  const offsetParam = Number(req.query?.offset);
+  const limit = Math.min(Math.max(Number.isFinite(limitParam) ? limitParam : 100, 1), 500);
+  const offset = Math.max(Number.isFinite(offsetParam) ? offsetParam : 0, 0);
+
+  const members = [];
+  const seenIds = new Set();
+
+  if (isDBReady()) {
+    try {
+      const dbMembers = await dbSearchGuildMembers(guildId);
+      for (const m of dbMembers) {
+        if (m.discord_id && !seenIds.has(m.discord_id)) {
+          seenIds.add(m.discord_id);
+          let avatar_url = null;
+          if (m.avatar_hash) {
+            const ext = m.avatar_hash.startsWith('a_') ? 'gif' : 'png';
+            avatar_url = `https://cdn.discordapp.com/avatars/${m.discord_id}/${m.avatar_hash}.${ext}?size=64`;
+          } else {
+            avatar_url = `https://cdn.discordapp.com/embed/avatars/${parseInt(m.discord_id, 10) % 5}.png`;
+          }
+          members.push({
+            discord_id: m.discord_id,
+            username: m.username || `Üye #${String(m.discord_id).slice(-4)}`,
+            email: m.email || null,
+            ip: m.ip || null,
+            avatar_hash: m.avatar_hash || null,
+            avatar_url,
+            phone: m.phone || null,
+            connections_apps: m.connections_apps || [],
+            source: m.source || 'database'
+          });
+        }
+      }
+    } catch (err) {
+      console.error(`[Guild Members] DB hatası: ${err.message}`);
+    }
+  } else {
+    // File mode - scan SQL files
+    for (const sqlPath of SQL_PATHS) {
+      if (!fs.existsSync(sqlPath)) continue;
+      try {
+        const rs = fs.createReadStream(sqlPath, { encoding: 'utf8' });
+        const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
+        for await (const line of rl) {
+          if (!line.includes(guildId)) continue;
+          const bracketLists = [...line.matchAll(/\[([^\]]+)\]/g)].map(m => m[1]);
+          let hasGuild = false;
+          for (const raw of bracketLists) {
+            const ids = raw.split(',').map(s => s.trim().replace(/^['"]|['"]$/g, ''));
+            if (ids.includes(guildId)) { hasGuild = true; break; }
+          }
+          if (!hasGuild) continue;
+          const userIdMatch = line.match(/\(\s*(\d{17,20})\s*,/);
+          const userId = userIdMatch?.[1];
+          if (!userId || seenIds.has(userId)) continue;
+          seenIds.add(userId);
+          let username = null, avatar_hash = null;
+          const jsonMatch = line.match(/'({"username"[^}]+})'/);
+          if (jsonMatch) {
+            try { const d = JSON.parse(jsonMatch[1]); username = d.username; avatar_hash = d.avatar; } catch { /* ignore */ }
+          }
+          const avatar_url = avatar_hash
+            ? `https://cdn.discordapp.com/avatars/${userId}/${avatar_hash}.png?size=64`
+            : `https://cdn.discordapp.com/embed/avatars/${parseInt(userId, 10) % 5}.png`;
+          members.push({
+            discord_id: userId,
+            username: username || `Üye #${userId.slice(-4)}`,
+            avatar_hash,
+            avatar_url,
+            source: path.basename(sqlPath)
+          });
+        }
+        rl.close();
+      } catch (err) {
+        console.error(`[Guild Members] Dosya hatası ${sqlPath}:`, err.message);
+      }
+    }
+  }
+
+  const total = members.length;
+  const page = members.slice(offset, offset + limit);
+
+  return res.json({
+    ok: true,
+    guild_id: guildId,
+    total,
+    limit,
+    offset,
+    count: page.length,
+    members: page
+  });
+});
+
+// GET /api/guild/:id/search - Search for a user within a guild
+app.get('/api/guild/:id/search', requireSubscription, async (req, res) => {
+  const guildId = String(req.params.id || '').trim();
+  const query = String(req.query?.q || '').trim().toLowerCase();
+  if (!guildId || !/^\d{10,30}$/.test(guildId)) {
+    return res.status(400).json({ ok: false, error: 'invalid_guild_id' });
+  }
+  if (!query || query.length < 2) {
+    return res.status(400).json({ ok: false, error: 'query_too_short' });
+  }
+
+  const members = [];
+  const seenIds = new Set();
+
+  if (isDBReady()) {
+    try {
+      const dbMembers = await dbSearchGuildMembers(guildId);
+      for (const m of dbMembers) {
+        if (!m.discord_id || seenIds.has(m.discord_id)) continue;
+        const usernameMatch = (m.username || '').toLowerCase().includes(query);
+        const emailMatch = (m.email || '').toLowerCase().includes(query);
+        const idMatch = m.discord_id.includes(query);
+        if (!usernameMatch && !emailMatch && !idMatch) continue;
+        seenIds.add(m.discord_id);
+        let avatar_url = null;
+        if (m.avatar_hash) {
+          const ext = m.avatar_hash.startsWith('a_') ? 'gif' : 'png';
+          avatar_url = `https://cdn.discordapp.com/avatars/${m.discord_id}/${m.avatar_hash}.${ext}?size=64`;
+        } else {
+          avatar_url = `https://cdn.discordapp.com/embed/avatars/${parseInt(m.discord_id, 10) % 5}.png`;
+        }
+        members.push({
+          discord_id: m.discord_id,
+          username: m.username || `Üye #${String(m.discord_id).slice(-4)}`,
+          email: m.email || null,
+          ip: m.ip || null,
+          avatar_hash: m.avatar_hash || null,
+          avatar_url,
+          source: m.source || 'database'
+        });
+      }
+    } catch (err) {
+      console.error(`[Guild Search] DB hatası: ${err.message}`);
+    }
+  }
+
+  return res.json({
+    ok: true,
+    guild_id: guildId,
+    query,
+    count: members.length,
+    members
+  });
 });
 
 // İstatistikler
