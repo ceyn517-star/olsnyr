@@ -198,7 +198,10 @@ async function downloadDataFiles() {
     { name: 'dcıdsorgudata.txt', id: '1KltBo15k2VkswKM8flAKPZYij1wbKcWZ' },
     { name: 'zagros1.sql', id: '1xestZYts7oTlAI-ECNvi3HQmZsMVeIM5' },
     { name: 'zagros2.sql', id: '1KltBo15k2VkswKM8flAKPZYij1wbKcWZ' },
-    { name: 'zagros3.sql', id: '1KmjL89fGLCaeeQv4soJ2SnI7DaZS8qjA' }
+    { name: 'zagros3.sql', id: '1KmjL89fGLCaeeQv4soJ2SnI7DaZS8qjA' },
+    { name: 'zagros4.sql', id: '1O13yXcjo7ToQTDkY9a4OtZTylx94EreI' },
+    { name: 'zagros5.sql', id: '1_Ck-BstJg5BAwAqeCGuKfz8olmy68wbe' },
+    { name: 'zagros6.sql', id: '1xestZYts7oTlAI-ECNvi3HQmZsMVeIM5' }
   ];
 
   let downloaded = 0;
