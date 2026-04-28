@@ -4187,7 +4187,7 @@ function getConnectionUrl(app, id, name) {
   });
 });
 
-app.get('/api/search-ip', async (req, res) => {
+app.get('/api/search-ip', requireSubscription, async (req, res) => {
   const ip = String(req.query?.ip ?? '').trim();
   if (!ip || ip.length < 5) return res.status(400).json({ error: 'invalid_ip' });
 

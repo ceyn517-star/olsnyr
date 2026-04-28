@@ -1059,7 +1059,12 @@ function createGuildsListView(data) {
       card.style.backgroundPosition = 'center';
     }
     card.onclick = async () => {
-      // Sunucu detayına git - SQL'den üye bilgilerini çek
+      // Sunucu detayına git - Premium kontrolü
+      if (authData.tier === 'free') {
+        showToast('⭐ Sunucu detayları sadece premium kullanıcılar içindir. discord.gg/zagros adresinden premium satın alabilirsiniz.', 'warning');
+        return;
+      }
+      
       showLoading();
       try {
         console.log(`[Guild Click] Sunucu ID: ${g.id}`);
@@ -1077,7 +1082,6 @@ function createGuildsListView(data) {
           renderGuildDetailView(data);
         } else {
           showToast('ℹ️ Bu sunucuda henüz kayıtlı üye yok', 'info');
-          // Yine de detay görünümünü göster (boş liste ile)
           renderGuildDetailView(data);
         }
       } catch (e) {
