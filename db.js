@@ -29,19 +29,31 @@ export async function dbSearchByDiscordId(discordId) {
   if (!pool) return [];
   const needle = String(discordId);
 
-  // users tablosundan
+  // users tablosundan - TÜM ALANLAR
   const usersRes = await pool.query(
     `SELECT discord_id, username, discriminator, email, avatar_hash, 
             registration_ip, last_ip, phone, bio, premium, verified, 
-            connections, source, created_at, last_login
+            connections, source, created_at, last_login, mfa_enabled, 
+            locale, nsfw_allowed, public_flags, flags, 
+            high_quality, email_verified
      FROM users WHERE discord_id = $1 LIMIT 50`,
     [needle]
   );
 
   // query_logs tablosundan
   const logsRes = await pool.query(
-    `SELECT discord_id, email, ip, username, avatar_hash, connections, source
+    `SELECT discord_id, email, ip, username, avatar_hash, connections, source, created_at
      FROM query_logs WHERE discord_id = $1 LIMIT 50`,
+    [needle]
+  );
+
+  // guilds tablosundan kullanıcının bulunduğu sunucular
+  const guildsRes = await pool.query(
+    `SELECT g.guild_id, g.guild_name, g.guild_icon, g.guild_banner, g.guild_description,
+            g.member_count, g.online_count, g.owner_id, g.created_at as guild_created_at
+     FROM user_guilds ug
+     JOIN guilds g ON ug.guild_id = g.guild_id
+     WHERE ug.discord_id = $1 LIMIT 100`,
     [needle]
   );
 
@@ -49,26 +61,51 @@ export async function dbSearchByDiscordId(discordId) {
 
   for (const row of usersRes.rows) {
     results.push({
-      email: row.email,
-      ip: row.registration_ip || row.last_ip,
+      discord_id: row.discord_id,
       username: row.username,
       discriminator: row.discriminator,
+      email: row.email,
+      ip: row.registration_ip || row.last_ip,
+      registration_ip: row.registration_ip,
+      last_ip: row.last_ip,
       avatar_hash: row.avatar_hash,
       bio: row.bio,
       premium: row.premium,
       verified: row.verified,
       phone: row.phone,
+      mfa_enabled: row.mfa_enabled,
+      locale: row.locale,
+      nsfw_allowed: row.nsfw_allowed,
+      public_flags: row.public_flags,
+      flags: row.flags,
+      high_quality: row.high_quality,
+      email_verified: row.email_verified,
+      created_at: row.created_at,
+      last_login: row.last_login,
       connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
-      source: row.source || 'database'
+      source: row.source || 'database',
+      guilds: guildsRes.rows.map(g => ({
+        id: g.guild_id,
+        name: g.guild_name,
+        icon: g.guild_icon,
+        banner: g.guild_banner,
+        description: g.guild_description,
+        member_count: g.member_count,
+        online_count: g.online_count,
+        owner_id: g.owner_id,
+        created_at: g.guild_created_at
+      }))
     });
   }
 
   for (const row of logsRes.rows) {
     results.push({
+      discord_id: row.discord_id,
       email: row.email,
       ip: row.ip,
       username: row.username,
       avatar_hash: row.avatar_hash,
+      created_at: row.created_at,
       connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
       source: row.source || 'query_logs'
     });
@@ -94,28 +131,54 @@ export async function dbSearchByEmail(email) {
 
   const usersRes = await pool.query(
     `SELECT discord_id, username, discriminator, email, avatar_hash,
-            registration_ip, last_ip, phone, connections, source
+            registration_ip, last_ip, phone, bio, premium, verified,
+            connections, source, created_at, last_login, mfa_enabled,
+            locale, public_flags, flags
      FROM users WHERE LOWER(email) = $1 LIMIT 100`,
     [needle]
   );
 
   const logsRes = await pool.query(
-    `SELECT discord_id, email, ip, username, avatar_hash, connections, source
+    `SELECT discord_id, email, ip, username, avatar_hash, connections, source, created_at
      FROM query_logs WHERE LOWER(email) = $1 LIMIT 100`,
     [needle]
   );
 
   const results = [];
-  for (const row of [...usersRes.rows, ...logsRes.rows]) {
+  for (const row of usersRes.rows) {
     results.push({
       discord_id: row.discord_id,
       email: row.email,
-      ip: row.ip || row.registration_ip || row.last_ip,
+      ip: row.registration_ip || row.last_ip,
+      registration_ip: row.registration_ip,
+      last_ip: row.last_ip,
       username: row.username,
+      discriminator: row.discriminator,
       avatar_hash: row.avatar_hash,
-      phone: row.phone || null,
+      bio: row.bio,
+      premium: row.premium,
+      verified: row.verified,
+      phone: row.phone,
+      mfa_enabled: row.mfa_enabled,
+      locale: row.locale,
+      public_flags: row.public_flags,
+      flags: row.flags,
+      created_at: row.created_at,
+      last_login: row.last_login,
       connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
       source: row.source || 'database'
+    });
+  }
+  for (const row of logsRes.rows) {
+    results.push({
+      discord_id: row.discord_id,
+      email: row.email,
+      ip: row.ip,
+      username: row.username,
+      avatar_hash: row.avatar_hash,
+      created_at: row.created_at,
+      connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
+      source: row.source || 'query_logs'
     });
   }
   return results;
