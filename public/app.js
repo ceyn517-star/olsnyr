@@ -295,11 +295,11 @@ window.addEventListener('DOMContentLoaded', () => {
   if (toggle) {
     toggle.addEventListener('change', (e) => applyDarkMode(e.target.checked));
   }
-  // Only show intro on first visit or if user is not logged in
-  const isLoggedIn = localStorage.getItem('zagros_authed') === '1';
-  if (!isLoggedIn) {
-    showIntroOverlay();
-  }
+  // Skip intro overlay - go directly to login
+  // const isLoggedIn = localStorage.getItem('zagros_authed') === '1';
+  // if (!isLoggedIn) {
+  //   showIntroOverlay();
+  // }
 });
 
 // Otomatik free giriş (boş body ile)
@@ -2277,18 +2277,13 @@ manualEmailOnly?.addEventListener('keydown', (e) => { if (e.key === 'Enter') add
 // 🎬 MATRIX PILL SELECTION - Cinematic Transition
 let pillSelectionMade = false;
 
-// Show pill selection on first visit
+// Show pill selection - DISABLED, go directly to login
 function showPillSelection() {
-  if (pillSelectionMade || localStorage.getItem('pillSelected')) return;
-  
+  // Skip pill selection, show login directly
   const theChoice = document.getElementById('the-choice');
-  if (theChoice) {
-    theChoice.classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
-    
-    // Auto-play cinematic music/sound effect (if browser allows)
-    playMatrixSound();
-  }
+  if (theChoice) theChoice.classList.add('hidden');
+  show(authCard);
+  hide(appCard);
 }
 
 // Play Matrix cinematic sound
@@ -2315,38 +2310,22 @@ function playMatrixSound() {
   } catch (e) { /* ignore audio errors */ }
 }
 
-// Blue Pill - Safe choice, shows warning then proceeds
+// Blue Pill - Skip, go directly to login
 function selectBluePill() {
-  if (pillSelectionMade) return;
-  pillSelectionMade = true;
-  
-  const bluePill = document.getElementById('bluePill');
-  if (bluePill) {
-    bluePill.style.transform = 'scale(1.2) translateZ(50px)';
-    bluePill.style.boxShadow = '0 0 60px #00bfff, 0 0 100px #0080ff';
-  }
-  
-  showToast('💊 Mavi Hap: Güvenli mod seçildi. Gerçeklik devam ediyor...', 'info');
-  
-  // 10 second cinematic Matrix transition
-  startMatrixCinematic('blue');
+  // Direct login - no pill selection
+  const theChoice = document.getElementById('the-choice');
+  if (theChoice) theChoice.classList.add('hidden');
+  show(authCard);
+  hide(appCard);
 }
 
-// Red Pill - Truth choice, direct access
+// Red Pill - Skip, go directly to login
 function selectRedPill() {
-  if (pillSelectionMade) return;
-  pillSelectionMade = true;
-  
-  const redPill = document.getElementById('redPill');
-  if (redPill) {
-    redPill.style.transform = 'scale(1.2) translateZ(50px)';
-    redPill.style.boxShadow = '0 0 60px #ff0040, 0 0 100px #ff0000';
-  }
-  
-  showToast('💊 Kırmızı Hap: OSINT dünyasına hoş geldiniz...', 'success');
-  
-  // 10 second cinematic Matrix transition
-  startMatrixCinematic('red');
+  // Direct login - no pill selection
+  const theChoice = document.getElementById('the-choice');
+  if (theChoice) theChoice.classList.add('hidden');
+  show(authCard);
+  hide(appCard);
 }
 
 // 10 Second Fullscreen Matrix Cinematic
@@ -2505,25 +2484,23 @@ function endCinematic() {
     }, 1000);
   }
   
-  // Mark as selected
-  localStorage.setItem('pillSelected', 'true');
-  
-  // Show auth card (login form) - ensure it's visible
+  // Show auth card (login form) directly - no pill selection
   show(authCard);
   hide(appCard);
   
-  // Re-check auth state
-  checkAuth();
+  // Ensure auth card is visible
+  authCard.style.display = 'block';
+  authCard.classList.remove('hidden');
 }
 
-// Initialize - check auth first, then show pill selection if needed
+// Initialize - check auth directly, skip pill selection
 (async function init() {
   // First check if user is already authenticated
   const isAuthed = await checkAuth();
   
-  if (!isAuthed && !localStorage.getItem('pillSelected')) {
-    // Show pill selection for new users
-    hide(authCard);
-    setTimeout(showPillSelection, 500);
+  // If not authenticated, show auth card (login form) directly
+  if (!isAuthed) {
+    show(authCard);
+    hide(appCard);
   }
 })();
