@@ -279,9 +279,6 @@ loginTabs.forEach(tab => {
   });
 });
 
-// Auto login button
-document.getElementById('autoLoginBtn').addEventListener('click', autoLogin);
-
 // Initialize dark mode on load
 window.addEventListener('DOMContentLoaded', () => {
   try {
@@ -295,6 +292,53 @@ window.addEventListener('DOMContentLoaded', () => {
   if (toggle) {
     toggle.addEventListener('change', (e) => applyDarkMode(e.target.checked));
   }
+  
+  // Attach login button event listeners after DOM is ready
+  const autoLoginBtn = document.getElementById('autoLoginBtn');
+  if (autoLoginBtn) {
+    autoLoginBtn.addEventListener('click', autoLogin);
+  }
+  
+  const keyLoginBtn = document.getElementById('keyLoginBtn');
+  if (keyLoginBtn) {
+    keyLoginBtn.addEventListener('click', async () => {
+      setError(authError, null);
+      const keyEl = document.getElementById('key');
+      try {
+        const response = await api('/api/login', { method: 'POST', body: JSON.stringify({ key: keyEl.value }) });
+        // Store auth data globally
+        authData = { tier: response.tier || 'free', ...response };
+        keyEl.value = '';
+        await checkAuth();
+
+        if (response.tier === 'admin') {
+          showToast('🔐 Admin girişi başarılı! Sınırsız erişim.', 'success');
+          showAdminLink();
+        } else {
+          showToast('🦁 Premium girişi başarılı! (Sınırsız erişim)', 'success');
+        }
+        updateSubscriptionInfo(response);
+      }
+      catch (err) {
+        const errorMsg = err?.error === 'expired' ? '❌ Anahtar süresi dolmuş.' :
+                         err?.error === 'invalid_key' ? '❌ Geçersiz anahtar.' :
+                         '❌ Giriş başarısız. Tekrar deneyin.';
+        setError(authError, errorMsg);
+      }
+    });
+  }
+  
+  // Key input Enter key support
+  const keyInput = document.getElementById('key');
+  if (keyInput) {
+    keyInput.addEventListener('keydown', (e) => { 
+      if (e.key === 'Enter') {
+        const keyLoginBtn = document.getElementById('keyLoginBtn');
+        if (keyLoginBtn) keyLoginBtn.click();
+      }
+    });
+  }
+  
   // Skip intro overlay - go directly to login
   // const isLoggedIn = localStorage.getItem('zagros_authed') === '1';
   // if (!isLoggedIn) {
@@ -321,34 +365,7 @@ async function autoLogin() {
   }
 }
 
-// Anahtar login (premium)
-keyLoginBtn.addEventListener('click', async () => {
-  setError(authError, null);
-  const keyEl = document.getElementById('key');
-  try {
-    const response = await api('/api/login', { method: 'POST', body: JSON.stringify({ key: keyEl.value }) });
-    // Store auth data globally
-    authData = { tier: response.tier || 'free', ...response };
-    keyEl.value = '';
-    await checkAuth();
-
-    if (response.tier === 'admin') {
-      showToast('🔐 Admin girişi başarılı! Sınırsız erişim.', 'success');
-      showAdminLink();
-    } else {
-      showToast('🦁 Premium girişi başarılı! (Sınırsız erişim)', 'success');
-    }
-    updateSubscriptionInfo(response);
-  }
-  catch (err) {
-    const errorMsg = err?.error === 'expired' ? '❌ Anahtar süresi dolmuş.' :
-                     err?.error === 'invalid_key' ? '❌ Geçersiz anahtar.' :
-                     '❌ Giriş başarısız. Tekrar deneyin.';
-    setError(authError, errorMsg);
-  }
-});
-
-document.getElementById('key').addEventListener('keydown', (e) => { if (e.key === 'Enter') keyLoginBtn.click(); });
+// Event listeners moved inside DOMContentLoaded above
 
 logoutBtn.addEventListener('click', async () => {
   try {
