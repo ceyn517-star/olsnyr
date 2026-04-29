@@ -1827,3 +1827,12 @@ a.tag:hover::after {
   padding: 14px 6px;
   text-align: center;
 }
+/* Mobile improvements */
+@media (max-width: 800px) {
+  .shell .sidebar { display: none !important; }
+  .shell .main-content { width: 100%; padding: 12px; }
+  #matrix-intro, #matrix-text { display: none !important; }
+  .card { width: 100%; margin: 0; }
+  input, button { font-size: 14px; padding: 12px; }
+  #authCard { opacity: 1; transform: none; }
+}

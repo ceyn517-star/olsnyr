@@ -1516,48 +1516,85 @@ function validateEmail(email) {
   return result;
 }
 
-// FindCord API (RAW)
+// FindCord API (RAW) - Geliştirilmiş versiyon
 // Not: Uygulamanın diğer kısımları `UserInfo`, `Guilds`, `GuildName` gibi alanları bekliyor.
 // Bu yüzden burada RAW response dönüyoruz.
 async function getFindCordData(userId) {
   try {
-    if (Date.now() < findCordRateLimitedUntil) return null;
+    if (Date.now() < findCordRateLimitedUntil) {
+      console.log(`[FindCord] Rate limit aktif, ${userId} için atlanıyor`);
+      return null;
+    }
 
     const cacheKey = String(userId);
     const cached = findCordCache.get(cacheKey);
     if (cached && (Date.now() - cached.time) < cached.ttl) {
+      console.log(`[FindCord] Cache hit: ${userId}`);
       return cached.data;
     }
 
+    console.log(`[FindCord] API çağrısı: ${userId}`);
+    
     const response = await axios.get(`https://app.findcord.com/api/user/${userId}`, {
       headers: {
         'Authorization': FINDCORD_API_KEY,
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'User-Agent': 'ZagrosOSINT/1.0'
       },
-      timeout: API_TIMEOUT
+      timeout: API_TIMEOUT,
+      validateStatus: (status) => status < 500 // 5xx hataları için reject etme
     });
+    
+    // 4xx hataları için özel işlem
+    if (response.status === 404) {
+      console.log(`[FindCord] Kullanıcı bulunamadı: ${userId}`);
+      findCordCache.set(cacheKey, { time: Date.now(), ttl: FINDCORD_NEG_TTL_MS, data: null });
+      return null;
+    }
+    
+    if (response.status === 429) {
+      findCordRateLimitedUntil = Date.now() + FINDCORD_RATE_LIMIT_COOLDOWN_MS;
+      console.log(`[FindCord] ⚠️ Rate limit! ${FINDCORD_RATE_LIMIT_COOLDOWN_MS/60000} dk bekleme`);
+      findCordCache.set(cacheKey, { time: Date.now(), ttl: FINDCORD_NEG_TTL_MS, data: null });
+      return null;
+    }
+    
+    if (response.status !== 200) {
+      console.log(`[FindCord] HTTP ${response.status}: ${userId}`);
+      findCordCache.set(cacheKey, { time: Date.now(), ttl: FINDCORD_NEG_TTL_MS, data: null });
+      return null;
+    }
     
     const data = response.data;
     
+    if (!data) {
+      console.log(`[FindCord] Boş yanıt: ${userId}`);
+      return null;
+    }
+    
     // FindCord verisini normalize et - Guilds alanını her formatta yakala
-    if (data) {
-      // Guilds alanını farklı formatlarda ara
-      const guilds = data.Guilds || data.guilds || data.Guild || data.guild || [];
-      if (Array.isArray(guilds) && guilds.length > 0) {
-        // Her guild için isim ve görsel bilgilerini normalize et
-        for (const g of guilds) {
-          const gid = String(g.GuildId || g.guild_id || g.id || '');
-          const gname = g.GuildName || g.guild_name || g.name || g.Name || '';
-          const gicon = g.GuildIcon || g.guild_icon || g.icon || g.Icon || '';
-          const gbanner = g.GuildBanner || g.guild_banner || g.banner || g.Banner || '';
-          const gdesc = g.Description || g.description || g.desc || '';
-          
-          // Guild ismini cache'e kaydet
-          if (gid && gname) {
-            rememberGuildName(gid, gname);
-          }
+    const guilds = data.Guilds || data.guilds || data.Guild || data.guild || [];
+    if (Array.isArray(guilds) && guilds.length > 0) {
+      console.log(`[FindCord] ${guilds.length} guild bulundu: ${userId}`);
+      // Her guild için isim ve görsel bilgilerini normalize et
+      for (const g of guilds) {
+        const gid = String(g.GuildId || g.guild_id || g.id || g.ID || '');
+        const gname = g.GuildName || g.guild_name || g.name || g.Name || g.guildName || '';
+        const gicon = g.GuildIcon || g.guild_icon || g.icon || g.Icon || g.iconHash || '';
+        const gbanner = g.GuildBanner || g.guild_banner || g.banner || g.Banner || g.bannerHash || '';
+        const gdesc = g.Description || g.description || g.desc || g.desc || '';
+        
+        // Guild ismini cache'e kaydet
+        if (gid && gname) {
+          rememberGuildName(gid, gname);
         }
       }
+    }
+    
+    // UserInfo kontrolü
+    const userInfo = data.UserInfo || data.userInfo || data.user_info || {};
+    if (userInfo.UserName || userInfo.username) {
+      console.log(`[FindCord] Kullanıcı bulundu: ${userInfo.UserName || userInfo.username}`);
     }
     
     findCordCache.set(cacheKey, { time: Date.now(), ttl: FINDCORD_CACHE_TTL_MS, data });
@@ -1579,40 +1616,69 @@ async function getFindCordData(userId) {
 }
 
 function normalizeFindCordData(userId, data) {
-  if (!data) return null;
-  const ui = data.UserInfo || data.userInfo || data.user_info || {};
-  const avatar = ui.UserdisplayAvatar || ui.user_display_avatar || ui.avatar || data.avatar || null;
-  const banner = ui.UserBanner || ui.user_banner || ui.banner || data.banner || null;
+  if (!data) {
+    console.log(`[normalizeFindCordData] Boş data: ${userId}`);
+    return null;
+  }
+  
+  // Tüm olası user info alanlarını kontrol et
+  const ui = data.UserInfo || data.userInfo || data.user_info || data.Userinfo || data.userinfo || {};
+  
+  // Avatar alanlarını genişlet
+  const avatar = ui.UserdisplayAvatar || ui.user_display_avatar || ui.UserDisplayAvatar || ui.avatar || 
+                 ui.Avatar || ui.userAvatar || data.avatar || data.Avatar || null;
+  
+  // Banner alanlarını genişlet
+  const banner = ui.UserBanner || ui.user_banner || ui.Userbanner || ui.banner || 
+                 ui.Banner || ui.userBanner || data.banner || data.Banner || null;
+
+  // Username alanlarını genişlet
+  const username = ui.UserName || ui.username || ui.user_name || ui.User || ui.user || 
+                     data.username || data.Username || data.user || null;
+  
+  // Global name alanlarını genişlet
+  const global_name = ui.UserGlobalName || ui.global_name || ui.user_global_name || ui.GlobalName || 
+                      ui.globalName || data.global_name || data.GlobalName || null;
 
   const normalized = {
     id: userId,
-    username: ui.UserName || ui.username || ui.user_name || data.username || null,
-    global_name: ui.UserGlobalName || ui.global_name || ui.user_global_name || data.global_name || null,
+    username,
+    global_name,
     avatar,
     banner,
-    bio: ui.UserBio || ui.bio || ui.user_bio || data.bio || null,
-    pronouns: ui.UserPronouns || ui.pronouns || data.pronouns || null,
-    presence: ui.Presence || ui.presence || data.Presence || data.presence || null,
-    badges: Array.isArray(ui.UserBadge || ui.user_badge) ? (ui.UserBadge || ui.user_badge) : (data.badges || data.Badges || []),
+    bio: ui.UserBio || ui.bio || ui.user_bio || ui.Bio || ui.bio || data.bio || data.Bio || null,
+    pronouns: ui.UserPronouns || ui.pronouns || ui.user_pronouns || ui.Pronouns || data.pronouns || null,
+    presence: ui.Presence || ui.presence || ui.UserPresence || ui.user_presence || data.Presence || data.presence || null,
+    badges: Array.isArray(ui.UserBadge || ui.user_badge || ui.Badges) ? 
+            (ui.UserBadge || ui.user_badge || ui.Badges) : 
+            (data.badges || data.Badges || []),
     guilds: data.Guilds || data.guilds || data.Guild || data.guild || [],
     raw: data
   };
 
+  // Avatar URL oluştur
   if (avatar) {
-    normalized.avatar_url = avatar.startsWith('http')
-      ? avatar
-      : `https://cdn.discordapp.com/avatars/${userId}/${avatar}.png?size=256`;
+    if (avatar.startsWith('http')) {
+      normalized.avatar_url = avatar;
+    } else if (avatar.length > 10) {
+      // Hash formatında
+      normalized.avatar_url = `https://cdn.discordapp.com/avatars/${userId}/${avatar}.png?size=256`;
+    }
   } else {
     const defaultIndex = parseInt(userId) % 5;
     normalized.avatar_url = `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
   }
 
+  // Banner URL oluştur
   if (banner) {
-    normalized.banner_url = banner.startsWith('http')
-      ? banner
-      : `https://cdn.discordapp.com/banners/${userId}/${banner}.png?size=512`;
+    if (banner.startsWith('http')) {
+      normalized.banner_url = banner;
+    } else if (banner.length > 10) {
+      normalized.banner_url = `https://cdn.discordapp.com/banners/${userId}/${banner}.png?size=512`;
+    }
   }
 
+  console.log(`[normalizeFindCordData] Normalized: ${username || 'unknown'} (${userId})`);
   return normalized;
 }
 

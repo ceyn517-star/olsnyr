@@ -222,6 +222,17 @@ async function checkAuth() {
       if (data.authed) {
         // Store auth data globally for tier checks
         authData = { tier: data.tier || 'free' };
+        // Also store in localStorage for persistence
+        localStorage.setItem('zagros_authed', '1');
+        localStorage.setItem('zagros_tier', data.tier || 'free');
+        
+        // Hide any overlays
+        const introOverlay = document.getElementById('intro-overlay');
+        if (introOverlay) introOverlay.remove();
+        
+        const theChoice = document.getElementById('the-choice');
+        if (theChoice) theChoice.classList.add('hidden');
+        
         hide(authCard); 
         show(appCard); 
         loadStats(); 
@@ -230,8 +241,13 @@ async function checkAuth() {
         return true;
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) { 
+    console.error('[checkAuth] Error:', err);
+  }
+  
+  // Not authenticated
   authData = { tier: 'free' };
+  localStorage.removeItem('zagros_authed');
   show(authCard); 
   hide(appCard); 
   return false;
@@ -279,10 +295,11 @@ window.addEventListener('DOMContentLoaded', () => {
   if (toggle) {
     toggle.addEventListener('change', (e) => applyDarkMode(e.target.checked));
   }
-  // Clear intro-seen flag so the Matrix video intro always plays on load
-  try { localStorage.removeItem('zagros_intro_seen'); } catch {}
-  // Show intro matrix overlay
-  showIntroOverlay();
+  // Only show intro on first visit or if user is not logged in
+  const isLoggedIn = localStorage.getItem('zagros_authed') === '1';
+  if (!isLoggedIn) {
+    showIntroOverlay();
+  }
 });
 
 // Otomatik free giriş (boş body ile)
@@ -334,9 +351,28 @@ keyLoginBtn.addEventListener('click', async () => {
 document.getElementById('key').addEventListener('keydown', (e) => { if (e.key === 'Enter') keyLoginBtn.click(); });
 
 logoutBtn.addEventListener('click', async () => {
-  await api('/api/logout', { method: 'POST', body: '{}' });
-  await checkAuth();
-  document.getElementById('subscriptionInfo').innerHTML = '';
+  try {
+    await api('/api/logout', { method: 'POST', body: '{}' });
+    // Clear auth state
+    authData = { tier: 'free' };
+    localStorage.removeItem('zagros_authed');
+    localStorage.removeItem('pillSelected'); // Reset pill selection on logout
+    
+    // Reset UI
+    document.getElementById('subscriptionInfo').innerHTML = '';
+    
+    // Remove admin link if exists
+    const adminLink = document.getElementById('adminPanelLink');
+    if (adminLink) adminLink.remove();
+    
+    // Check auth to update UI state
+    await checkAuth();
+    
+    showToast('👋 Çıkış yapıldı. Tekrar giriş yapabilirsiniz.', 'info');
+  } catch (err) {
+    console.error('Logout error:', err);
+    showToast('❌ Çıkış yapılırken hata oluştu', 'error');
+  }
 });
 
 // Update subscription info display
@@ -2472,16 +2508,22 @@ function endCinematic() {
   // Mark as selected
   localStorage.setItem('pillSelected', 'true');
   
-  // Show auth card (login form)
+  // Show auth card (login form) - ensure it's visible
   show(authCard);
+  hide(appCard);
+  
+  // Re-check auth state
+  checkAuth();
 }
 
-// Initialize - check if pill selection needed
-if (!localStorage.getItem('pillSelected')) {
-  // Show pill selection instead of auth card initially
-  hide(authCard);
-  setTimeout(showPillSelection, 500);
-} else {
-  // Normal flow - check auth
-  await checkAuth();
-}
+// Initialize - check auth first, then show pill selection if needed
+(async function init() {
+  // First check if user is already authenticated
+  const isAuthed = await checkAuth();
+  
+  if (!isAuthed && !localStorage.getItem('pillSelected')) {
+    // Show pill selection for new users
+    hide(authCard);
+    setTimeout(showPillSelection, 500);
+  }
+})();
