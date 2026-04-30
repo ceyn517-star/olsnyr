@@ -1097,8 +1097,8 @@ const SEARCH_TIMEOUTS = {
   id: 10000,      // 10 saniye
   email: 10000,   // 10 saniye
   ip: 10000,      // 10 saniye
-  guild: 60000,   // 60 saniye - SQL dosyaları çok büyük
-  guilds: 45000   // 45 saniye - sunucu listesi (SQL tarama uzun sürüyor)
+  guild: 180000,  // 180 saniye (3 dk) - SQL dosyaları çok büyük
+  guilds: 120000  // 120 saniye (2 dk) - sunucu listesi (SQL tarama uzun sürüyor)
 };
 
 async function doSearch() {

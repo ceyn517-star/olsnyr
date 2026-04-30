@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+buimport fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -711,7 +711,7 @@ setInterval(() => {
 
 // ⚡ PERFORMANS AYARLARI
 const MAX_SEARCH_TIME = 8000;      // 8 saniye (normal aramalar)
-const GUILD_SEARCH_TIME = 25000;   // 25 saniye (sunucu aramaları)
+const GUILD_SEARCH_TIME = 120000;  // 120 saniye (sunucu aramaları - büyük SQL dosyaları için)
 const MAX_RESULTS = 100;
 const STREAM_BATCH = 1000;
 const API_TIMEOUT = 5000;          // API çağrıları 5 sn
