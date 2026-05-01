@@ -217,6 +217,9 @@ window.addEventListener('DOMContentLoaded', () => {
           showToast('🦁 Premium girişi başarılı! (Sınırsız erişim)', 'success');
         }
         updateSubscriptionInfo(response);
+        
+        // Reload page to ensure session is properly set
+        setTimeout(() => window.location.reload(), 500);
       }
       catch (err) {
         const errorMsg = err?.error === 'expired' ? '❌ Anahtar süresi dolmuş.' :
@@ -259,6 +262,9 @@ async function autoLogin() {
     }
     showToast(message, 'success');
     updateSubscriptionInfo(response);
+    
+    // Reload page to ensure session is properly set
+    setTimeout(() => window.location.reload(), 500);
   } catch (err) {
     console.error('Auto login failed:', err);
   }
