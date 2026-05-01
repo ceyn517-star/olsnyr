@@ -365,7 +365,10 @@ detectDataSources();
 const APP_PORT = Number(process.env.PORT) || 8080;
 const APP_HOST = '0.0.0.0';
 const SITE_PASSWORD = process.env.ZAGROS_PASSWORD ?? 'zagros31ceyn';
-const FINDCORD_API_KEY = '1fb785c3eb8069ba341836e0b25dabb4b20e439b4bce300123da1f791f12a3ea';
+const FINDCORD_API_KEY = process.env.FINDCORD_API_KEY || '';
+if (!FINDCORD_API_KEY) {
+  console.log('[FindCord] FINDCORD_API_KEY yok (env). FindCord enrichment kapalı.');
+}
 
 // 👑 ADMIN PANEL YAPILANDIRMASI
 const ADMIN_ID = process.env.ADMIN_ID || 'zagros'; // Admin kullanıcı adı
@@ -7549,24 +7552,25 @@ app.get('/api/widget/:guildId', async (req, res) => {
   }
   
   try {
-    const response = await fetch(`https://discord.com/api/guilds/${guildId}/widget.json`, {
+    const response = await axios.get(`https://discord.com/api/guilds/${encodeURIComponent(guildId)}/widget.json`, {
+      timeout: 5000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; ZagrosWidgetProxy/1.0)'
       },
-      timeout: 5000
+      validateStatus: (s) => s < 500
     });
-    
-    if (!response.ok) {
-      if (response.status === 404) {
-        return res.status(404).json({ error: 'Widget not enabled' });
-      }
-      if (response.status === 429) {
-        return res.status(429).json({ error: 'Rate limited' });
-      }
+
+    if (response.status !== 200) {
+      if (response.status === 404) return res.status(404).json({ error: 'Widget not enabled' });
+      if (response.status === 429) return res.status(429).json({ error: 'Rate limited' });
       return res.status(response.status).json({ error: 'Discord API error' });
     }
-    
-    const data = await response.json();
+
+    const data = response.data;
+    if (!data || typeof data !== 'object') {
+      return res.status(502).json({ error: 'invalid_widget_response' });
+    }
     
     // Cache'e kaydet
     widgetCache.set(guildId, {
