@@ -25,6 +25,26 @@ import { scanDataSources, loadAllSql } from './data_sources.js';
 // PostgreSQL bağlantısı (varsa)
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const ZAGROS_DB_URL = DATABASE_URL ? DATABASE_URL.replace(/\/[^\/]*$/, '/zagros') : '';
+
+// Zagros veritabanını oluştur
+async function createZagrosDatabase() {
+  if (!DATABASE_URL) return;
+  
+  try {
+    const { Pool } = await import('pg');
+    const pool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    });
+    
+    await pool.query('CREATE DATABASE IF NOT EXISTS zagros');
+    console.log('[DB] ✓ Zagros veritabanı oluşturuldu');
+    await pool.end();
+  } catch (err) {
+    console.log('[DB] Zagros veritabanı zaten var veya oluşturulamadı:', err.message);
+  }
+}
+
 if (ZAGROS_DB_URL) {
   try {
     initDB(ZAGROS_DB_URL);
@@ -7672,6 +7692,9 @@ const server = app.listen(APP_PORT, APP_HOST, async () => {
   console.log(`[Server] ✅ Zagros OSINT running at http://${APP_HOST}:${APP_PORT}`);
   console.log(`[Deploy] Version: ${APP_VERSION}`);
   console.log(`[Environment] ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  
+  // Zagros veritabanını oluştur
+  await createZagrosDatabase();
   
   // SQL dosyalarını veritabanına yükle
   await ensureSqlLoaded();
