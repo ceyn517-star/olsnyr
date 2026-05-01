@@ -4598,7 +4598,22 @@ function calculateBounds(markers) {
   };
 }
 
+// 🔐 API auth gate
+// Not: bazı endpoint'ler public olmalı (health/version/login/widget/CDN helpers).
+const PUBLIC_API_PREFIXES = [
+  '/api/health',
+  '/api/version',
+  '/api/login',
+  '/api/logout',
+  '/api/status',
+  '/api/widget/',      // Discord widget proxy (CORS helper)
+  '/api/discord/'      // CDN/url helper endpoints
+];
+
 app.use('/api', (req, res, next) => {
+  if (req.method === 'OPTIONS') return next();
+  const p = req.path || '';
+  if (PUBLIC_API_PREFIXES.some(prefix => p === prefix || p.startsWith(prefix))) return next();
   if (req.session?.authed) return next();
   return res.status(401).json({ error: 'unauthorized' });
 });
