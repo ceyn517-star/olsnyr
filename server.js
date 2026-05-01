@@ -7511,6 +7511,48 @@ app.get('/api/discord/cdn', (req, res) => {
   return res.json({ ok: true, url });
 });
 
+// 🎯 Discord Widget API Proxy - CORS ve rate limit koruması
+// Önemli: SPA catch-all route'undan ÖNCE tanımlanmalı, yoksa index.html döner.
+const widgetCache = new Map();
+const WIDGET_CACHE_TTL = 5 * 60 * 1000; // 5 dakika cache
+
+app.get('/api/widget/:guildId', async (req, res) => {
+  const { guildId } = req.params;
+
+  const cached = widgetCache.get(guildId);
+  if (cached && (Date.now() - cached.timestamp) < WIDGET_CACHE_TTL) {
+    return res.json(cached.data);
+  }
+
+  try {
+    const response = await axios.get(`https://discord.com/api/guilds/${encodeURIComponent(guildId)}/widget.json`, {
+      timeout: 5000,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; ZagrosWidgetProxy/1.0)'
+      },
+      validateStatus: (s) => s < 500
+    });
+
+    if (response.status !== 200) {
+      if (response.status === 404) return res.status(404).json({ error: 'Widget not enabled' });
+      if (response.status === 429) return res.status(429).json({ error: 'Rate limited' });
+      return res.status(response.status).json({ error: 'Discord API error' });
+    }
+
+    const data = response.data;
+    if (!data || typeof data !== 'object') {
+      return res.status(502).json({ error: 'invalid_widget_response' });
+    }
+
+    widgetCache.set(guildId, { data, timestamp: Date.now() });
+    return res.json(data);
+  } catch (error) {
+    console.error(`[Widget Proxy] ${guildId} hata:`, error.message);
+    return res.status(500).json({ error: 'Proxy error' });
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Admin panel route - allow access if logged in as admin
@@ -7552,53 +7594,6 @@ app.use((err, req, res, next) => {
     <p>${errorMessage}</p>
     <a href="/">Ana Sayfaya Dön</a>
   `);
-});
-
-// 🎯 Discord Widget API Proxy - CORS ve rate limit koruması
-const widgetCache = new Map();
-const WIDGET_CACHE_TTL = 5 * 60 * 1000; // 5 dakika cache
-
-app.get('/api/widget/:guildId', async (req, res) => {
-  const { guildId } = req.params;
-  
-  // Cache kontrolü
-  const cached = widgetCache.get(guildId);
-  if (cached && (Date.now() - cached.timestamp) < WIDGET_CACHE_TTL) {
-    return res.json(cached.data);
-  }
-  
-  try {
-    const response = await axios.get(`https://discord.com/api/guilds/${encodeURIComponent(guildId)}/widget.json`, {
-      timeout: 5000,
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (compatible; ZagrosWidgetProxy/1.0)'
-      },
-      validateStatus: (s) => s < 500
-    });
-
-    if (response.status !== 200) {
-      if (response.status === 404) return res.status(404).json({ error: 'Widget not enabled' });
-      if (response.status === 429) return res.status(429).json({ error: 'Rate limited' });
-      return res.status(response.status).json({ error: 'Discord API error' });
-    }
-
-    const data = response.data;
-    if (!data || typeof data !== 'object') {
-      return res.status(502).json({ error: 'invalid_widget_response' });
-    }
-    
-    // Cache'e kaydet
-    widgetCache.set(guildId, {
-      data,
-      timestamp: Date.now()
-    });
-    
-    res.json(data);
-  } catch (error) {
-    console.error(`[Widget Proxy] ${guildId} hata:`, error.message);
-    res.status(500).json({ error: 'Proxy error' });
-  }
 });
 
 // Server başlat - hemen başlat, dosya indirme arka planda çalışsın
