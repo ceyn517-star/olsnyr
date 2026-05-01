@@ -123,6 +123,10 @@ async function api(path, opts) {
     headers: { 'Content-Type': 'application/json', ...(opts?.headers ?? {}) } 
   });
   const data = await res.json().catch(() => null);
+  if (data === null) {
+    // JSON olmayan/boş response'lar UI'da null dereference'a yol açmasın
+    throw new Error('invalid_json');
+  }
   if (!res.ok) throw new Error(data?.error || 'request_failed');
   return data;
 }
@@ -137,8 +141,10 @@ async function checkAuth() {
         // Store auth data globally for tier checks
         authData = { tier: data.tier || 'free' };
         // Also store in localStorage for persistence
-        localStorage.setItem('zagros_authed', '1');
-        localStorage.setItem('zagros_tier', data.tier || 'free');
+        try {
+          localStorage.setItem('zagros_authed', '1');
+          localStorage.setItem('zagros_tier', data.tier || 'free');
+        } catch {}
         
         console.log('[checkAuth] User authenticated, showing app card');
         
@@ -166,7 +172,7 @@ async function checkAuth() {
   
   // Not authenticated
   authData = { tier: 'free' };
-  localStorage.removeItem('zagros_authed');
+  try { localStorage.removeItem('zagros_authed'); } catch {}
   show(authCard); 
   hide(appCard); 
   return false;
@@ -1743,6 +1749,7 @@ async function fetchDiscordWidget(guildId) {
     // Backend proxy kullan (CORS sorununu önler)
     const response = await api(`/api/widget/${guildId}`, { method: 'GET' });
     
+    if (!response || typeof response !== 'object') return null;
     if (response.error) {
       if (response.error === 'Rate limited') {
         console.log(`[Widget] ${guildId} - Rate limited`);
@@ -1752,7 +1759,7 @@ async function fetchDiscordWidget(guildId) {
     
     return response;
   } catch (error) {
-    console.log(`[Widget] ${guildId} - Hata:`, error.message);
+    console.log(`[Widget] ${guildId} - Hata:`, error?.message || String(error));
     return null;
   }
 }
