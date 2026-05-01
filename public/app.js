@@ -132,12 +132,15 @@ async function checkAuth() {
     const res = await fetch('/api/health', { method: 'GET', credentials: 'same-origin' });
     if (res.ok) {
       const data = await res.json();
+      console.log('[checkAuth] API response:', data);
       if (data.authed) {
         // Store auth data globally for tier checks
         authData = { tier: data.tier || 'free' };
         // Also store in localStorage for persistence
         localStorage.setItem('zagros_authed', '1');
         localStorage.setItem('zagros_tier', data.tier || 'free');
+        
+        console.log('[checkAuth] User authenticated, showing app card');
         
         // Hide any overlays
         const introOverlay = document.getElementById('intro-overlay');
@@ -151,7 +154,11 @@ async function checkAuth() {
         loadStats(); 
         try { renderHistory(); } catch (e) {}
         return true;
+      } else {
+        console.log('[checkAuth] User not authenticated (authed: false)');
       }
+    } else {
+      console.log('[checkAuth] Health check failed:', res.status);
     }
   } catch (err) { 
     console.error('[checkAuth] Error:', err);
@@ -217,9 +224,6 @@ window.addEventListener('DOMContentLoaded', () => {
           showToast('🦁 Premium girişi başarılı! (Sınırsız erişim)', 'success');
         }
         updateSubscriptionInfo(response);
-        
-        // Reload page to ensure session is properly set
-        setTimeout(() => window.location.reload(), 500);
       }
       catch (err) {
         const errorMsg = err?.error === 'expired' ? '❌ Anahtar süresi dolmuş.' :
@@ -262,9 +266,6 @@ async function autoLogin() {
     }
     showToast(message, 'success');
     updateSubscriptionInfo(response);
-    
-    // Reload page to ensure session is properly set
-    setTimeout(() => window.location.reload(), 500);
   } catch (err) {
     console.error('Auto login failed:', err);
   }
