@@ -33,21 +33,41 @@ export function scanDataSources(dataDir) {
 
 // Load all SQL files into the database. Assumes a working DB connection via db.execSql.
 export async function loadAllSql(dataDir, sqlPaths) {
-  // In this environment we do not execute SQL files automatically.
-  // We simply verify that the files exist and are readable.
+  // Execute SQL files into the database
   try {
+    const { execSql } = await import('./db.js');
+    
     for (const file of sqlPaths) {
       try {
-        if (typeof file === 'string' && file) {
-          fs.accessSync(file, fs.constants.R_OK);
+        if (typeof file === 'string' && file && fs.existsSync(file)) {
+          console.log(`[DataSources] Loading SQL file: ${path.basename(file)}`);
+          const sqlContent = fs.readFileSync(file, 'utf8');
+          
+          // Split into individual statements and execute
+          const statements = sqlContent
+            .split(/;\s*\n/)
+            .filter(stmt => stmt.trim() && !stmt.trim().startsWith('--'))
+            .map(stmt => stmt.trim());
+          
+          for (const statement of statements) {
+            if (statement) {
+              try {
+                await execSql(statement);
+              } catch (sqlErr) {
+                console.warn(`[DataSources] SQL statement failed in ${path.basename(file)}:`, sqlErr.message);
+              }
+            }
+          }
+          
+          console.log(`[DataSources] ✓ Loaded: ${path.basename(file)}`);
         }
       } catch (e) {
-        console.warn('[DataSources] SQL file unreadable:', file);
+        console.warn('[DataSources] SQL file load error:', file, e.message);
       }
     }
     return true;
   } catch (err) {
-    console.error('[DataSources] Failed to validate SQL files:', err.message);
+    console.error('[DataSources] Failed to load SQL files:', err.message);
     return false;
   }
 }
