@@ -3131,7 +3131,10 @@ async function fetchDCFlowLeaderboard(limit = 50) {
 
 // Fetch FindCord guilds (if API key available)
 async function fetchFindCordGuilds(limit = 50) {
-  if (!FINDCORD_API_KEY) return [];
+  if (!FINDCORD_API_KEY) {
+    console.log('[FindCord] API key yok, alternatif Discord kaynakları kullanılıyor...');
+    return [];
+  }
   try {
     const res = await axios.get('https://app.findcord.com/api/guilds', {
       headers: { 'Authorization': FINDCORD_API_KEY },
@@ -3144,6 +3147,36 @@ async function fetchFindCordGuilds(limit = 50) {
   } catch (e) {
     console.error('[FindCord] Hata:', e?.message);
     return [];
+  }
+}
+
+// Discord Widget API - Token gerekmez
+async function fetchDiscordWidgetInfo(guildId) {
+  try {
+    const response = await axios.get(`https://discord.com/api/guilds/${guildId}/widget.json`, {
+      timeout: 5000,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'ZagrosOSINT/1.0'
+      }
+    });
+    
+    const data = response.data;
+    if (data && data.id) {
+      return {
+        id: data.id,
+        name: data.name,
+        instant_invite: data.instant_invite,
+        presence_count: data.presence_count || 0,
+        members: data.members || [],
+        channels: data.channels || [],
+        source: 'discord_widget'
+      };
+    }
+    return null;
+  } catch (error) {
+    // Widget disabled veya hata
+    return null;
   }
 }
 
