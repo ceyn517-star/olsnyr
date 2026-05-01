@@ -48,10 +48,36 @@ axios.defaults.timeout = 8000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Railway'de /data volume kullan, yoksa local ..
-const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH 
-  ? process.env.RAILWAY_VOLUME_MOUNT_PATH 
-  : __dirname;
+// Railway'de kalıcı volume kullan, yoksa local klasör.
+// Not: Railway volume çoğu projede `/data` olarak mount edilir. Bazı ortamlarda
+// RAILWAY_VOLUME_MOUNT_PATH env'i gelmeyebilir; bu yüzden fallback ekliyoruz.
+function resolveDataDir() {
+  const envDir = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.DATA_DIR || '';
+  const candidates = [];
+  if (envDir) candidates.push(envDir);
+  // Production'da önce /data dene (Railway volume mount default'u)
+  if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT) {
+    candidates.push('/data');
+  }
+  candidates.push(__dirname);
+
+  for (const dir of candidates) {
+    try {
+      if (!dir) continue;
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      // yazılabilirlik kontrolü
+      const probe = path.join(dir, '.write_test');
+      fs.writeFileSync(probe, 'ok');
+      fs.unlinkSync(probe);
+      return dir;
+    } catch {
+      // try next
+    }
+  }
+  return __dirname;
+}
+
+const DATA_DIR = resolveDataDir();
 const { TXT_PATH: _TXT_PATH, SQL_PATHS: _SQL_PATHS } = scanDataSources(DATA_DIR);
 let TXT_PATH = _TXT_PATH;
 let SQL_PATHS = _SQL_PATHS;
