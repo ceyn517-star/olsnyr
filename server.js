@@ -43,7 +43,7 @@ process.stdout.setMaxListeners && process.stdout.setMaxListeners(100);
 process.stderr.setMaxListeners && process.stderr.setMaxListeners(100);
 axios.defaults.httpAgent = httpAgent;
 axios.defaults.httpsAgent = httpsAgent;
-axios.defaults.timeout = 8000;
+axios.defaults.timeout = 15000;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
