@@ -37,11 +37,20 @@ async function createZagrosDatabase() {
       ssl: { rejectUnauthorized: false }
     });
     
-    await pool.query('CREATE DATABASE IF NOT EXISTS zagros');
-    console.log('[DB] ✓ Zagros veritabanı oluşturuldu');
+    // PostgreSQL'de IF NOT EXISTS yok, try-catch ile kontrol et
+    try {
+      await pool.query('CREATE DATABASE zagros');
+      console.log('[DB] ✓ Zagros veritabanı oluşturuldu');
+    } catch (err) {
+      if (err.message.includes('already exists')) {
+        console.log('[DB] Zagros veritabanı zaten var');
+      } else {
+        throw err;
+      }
+    }
     await pool.end();
   } catch (err) {
-    console.log('[DB] Zagros veritabanı zaten var veya oluşturulamadı:', err.message);
+    console.log('[DB] Zagros veritabanı hatası:', err.message);
   }
 }
 
