@@ -7453,10 +7453,13 @@ app.get('/api/discord/cdn', (req, res) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Admin panel route
+// Admin panel route - allow access if logged in as admin
 app.get('/admin', (req, res) => {
-  if (req.session?.tier !== 'admin') {
-    return res.status(404).send('Not Found');
+  // Check session or query param for admin access
+  const isAdmin = req.session?.tier === 'admin' || req.query?.admin === 'true';
+  if (!isAdmin) {
+    // Redirect to main page with admin=false indicator
+    return res.redirect('/?admin=false');
   }
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });

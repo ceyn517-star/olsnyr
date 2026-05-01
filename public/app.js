@@ -150,7 +150,6 @@ async function checkAuth() {
         show(appCard); 
         loadStats(); 
         try { renderHistory(); } catch (e) {}
-        if (data.tier === 'admin') showAdminLink();
         return true;
       }
     }
@@ -164,18 +163,6 @@ async function checkAuth() {
   show(authCard); 
   hide(appCard); 
   return false;
-}
-
-function showAdminLink() {
-  if (document.getElementById('adminPanelLink')) return;
-  const btn = document.createElement('a');
-  btn.id = 'adminPanelLink';
-  btn.href = '/admin';
-  btn.target = '_blank';
-  btn.textContent = '🔐 Admin Panel';
-  btn.style.cssText = 'background:linear-gradient(135deg,#5865F2,#4752C4);color:#fff;padding:8px 16px;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;margin-left:10px;display:inline-block;';
-  const logoutBtn = document.getElementById('logoutBtn');
-  if (logoutBtn?.parentNode) logoutBtn.parentNode.insertBefore(btn, logoutBtn);
 }
 
 // Login tab switching
@@ -226,7 +213,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
         if (response.tier === 'admin') {
           showToast('🔐 Admin girişi başarılı! Sınırsız erişim.', 'success');
-          showAdminLink();
         } else {
           showToast('🦁 Premium girişi başarılı! (Sınırsız erişim)', 'success');
         }
@@ -286,14 +272,11 @@ logoutBtn.addEventListener('click', async () => {
     // Clear auth state
     authData = { tier: 'free' };
     localStorage.removeItem('zagros_authed');
+    localStorage.removeItem('zagros_tier');
     localStorage.removeItem('pillSelected'); // Reset pill selection on logout
     
     // Reset UI
     document.getElementById('subscriptionInfo').innerHTML = '';
-    
-    // Remove admin link if exists
-    const adminLink = document.getElementById('adminPanelLink');
-    if (adminLink) adminLink.remove();
     
     // Check auth to update UI state
     await checkAuth();
