@@ -205,20 +205,26 @@ window.addEventListener('DOMContentLoaded', () => {
   console.log('[DOMContentLoaded] autoLoginBtn element:', autoLoginBtn);
   if (autoLoginBtn) {
     autoLoginBtn.addEventListener('click', () => {
-      console.log('[autoLoginBtn] Clicked!');
+      console.log('[autoLoginBtn] CLICKED! Starting autoLogin...');
       autoLogin();
     });
+    autoLoginBtn.addEventListener('mousedown', () => console.log('[autoLoginBtn] MOUSEDOWN'));
   } else {
     console.error('[DOMContentLoaded] autoLoginBtn not found!');
   }
   
   const keyLoginBtn = document.getElementById('keyLoginBtn');
+  console.log('[DOMContentLoaded] keyLoginBtn element:', keyLoginBtn);
   if (keyLoginBtn) {
     keyLoginBtn.addEventListener('click', async () => {
+      console.log('[keyLoginBtn] CLICKED!');
       setError(authError, null);
       const keyEl = document.getElementById('key');
+      console.log('[keyLoginBtn] Key value:', keyEl?.value?.substring(0, 10) + '...');
       try {
+        console.log('[keyLoginBtn] Calling /api/login...');
         const response = await api('/api/login', { method: 'POST', body: JSON.stringify({ key: keyEl.value }) });
+        console.log('[keyLoginBtn] Login response:', response);
         // Store auth data globally
         authData = { tier: response.tier || 'free', ...response };
         keyEl.value = '';
@@ -231,16 +237,21 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         updateSubscriptionInfo(response);
         
-        // Reload page to ensure session is properly set and UI updates
-        setTimeout(() => window.location.reload(), 1000);
+        // Session cookie set edildiyse checkAuth zaten UI'ı appCard'a geçirir.
+        // Proxy/HTTPS ortamlarında gereksiz reload bazen "giriş olmuyor" hissi yaratabiliyor.
+        console.log('[keyLoginBtn] Login complete (no reload).');
       }
       catch (err) {
+        console.error('[keyLoginBtn] Login error:', err);
         const errorMsg = err?.error === 'expired' ? '❌ Anahtar süresi dolmuş.' :
                          err?.error === 'invalid_key' ? '❌ Geçersiz anahtar.' :
                          '❌ Giriş başarısız. Tekrar deneyin.';
         setError(authError, errorMsg);
       }
     });
+    keyLoginBtn.addEventListener('mousedown', () => console.log('[keyLoginBtn] MOUSEDOWN'));
+  } else {
+    console.error('[DOMContentLoaded] keyLoginBtn not found!');
   }
   
   // Key input Enter key support
@@ -278,8 +289,7 @@ async function autoLogin() {
     showToast(message, 'success');
     updateSubscriptionInfo(response);
     
-    // Reload page to ensure session is properly set
-    setTimeout(() => window.location.reload(), 1000);
+    console.log('[autoLogin] Login complete (no reload).');
   } catch (err) {
     console.error('[autoLogin] Auto login failed:', err);
   }

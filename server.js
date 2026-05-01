@@ -3542,6 +3542,11 @@ const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RAIL
 
 const app = express();
 app.disable('x-powered-by');
+// Railway/Render gibi reverse proxy arkasında Secure cookie'nin doğru çalışması için
+// req.secure ve proto tespiti "trust proxy" ile mümkün olur.
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
 
 // 🌐 CORS - Herkese Açık Site Ayarları
 const ALLOWED_ORIGINS = [

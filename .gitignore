@@ -25,6 +25,8 @@ visitors.json
 guild_names_cache.json
 subscriptions.json
 admin_data.json
+sessions/
+tmp_cookies.txt
 
 # Helper scripts & tokens
 create_repo*.js
