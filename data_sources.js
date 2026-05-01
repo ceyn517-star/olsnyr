@@ -43,18 +43,50 @@ export async function loadAllSql(dataDir, sqlPaths) {
           console.log(`[DataSources] Loading SQL file: ${path.basename(file)}`);
           const sqlContent = fs.readFileSync(file, 'utf8');
           
+          // Enhanced MySQL to PostgreSQL conversion
+          let processedContent = sqlContent
+            .replace(/`/g, '"')  // Backticks -> çift tırnak
+            .replace(/\\'/g, "''")  // Escape single quotes
+            .replace(/\\n/g, '\\n')  // Handle newlines
+            .replace(/\\r/g, '\\r')  // Handle carriage returns
+            .replace(/\\t/g, '\\t')  // Handle tabs
+            .replace(/USE\s+\w+;/gi, '')  // Remove USE statements
+            .replace(/--.*$/gm, '')  // Remove single line comments
+            .replace(/\/\*[\s\S]*?\*\//g, '')  // Remove multi-line comments
+            .replace(/ENGINE=\w+/gi, '')  // Remove ENGINE declarations
+            .replace(/DEFAULT CHARSET=\w+/gi, '')  // Remove CHARSET
+            .replace(/COLLATE=\w+/gi, '')  // Remove COLLATE
+            .replace(/AUTO_INCREMENT/gi, 'SERIAL')  // MySQL AUTO_INCREMENT -> PostgreSQL SERIAL
+            .replace(/TINYINT\(\d+\)/gi, 'SMALLINT')  // TINYINT -> SMALLINT
+            .replace(/MEDIUMINT\(\d+\)/gi, 'INTEGER')  // MEDIUMINT -> INTEGER
+            .replace(/INT\(\d+\)/gi, 'INTEGER')  // INT(n) -> INTEGER
+            .replace(/BIGINT\(\d+\)/gi, 'BIGINT')  // BIGINT(n) -> BIGINT
+            .replace(/VARCHAR\(\d+\)/gi, (match) => match)  // Keep VARCHAR
+            .replace(/TEXT\(\d+\)/gi, 'TEXT')  // TEXT(n) -> TEXT
+            .replace(/DATETIME/gi, 'TIMESTAMP')  // DATETIME -> TIMESTAMP
+            .replace(/IF NOT EXISTS/gi, 'IF NOT EXISTS')  // Keep IF NOT EXISTS
+            .replace(/PRIMARY KEY\s*\(/gi, 'PRIMARY KEY (')  // Keep PRIMARY KEY
+            .replace(/UNIQUE KEY\s*\(/gi, 'UNIQUE (')  // MySQL UNIQUE KEY -> PostgreSQL UNIQUE
+            .replace(/KEY\s*\(/gi, 'INDEX (')  // MySQL KEY -> PostgreSQL INDEX
+            .replace(/\s*,\s*\)/g, ')')  // Clean trailing commas
+            .replace(/;\s*$/gm, ';')  // Ensure semicolons
+            .replace(/\n\s*\n/g, '\n');  // Remove empty lines
+
           // Split into individual statements and execute
-          const statements = sqlContent
+          const statements = processedContent
             .split(/;\s*\n/)
             .filter(stmt => stmt.trim() && !stmt.trim().startsWith('--'))
-            .map(stmt => stmt.trim());
+            .map(stmt => stmt.trim())
+            .filter(stmt => stmt.length > 10); // Filter out very short statements
           
           for (const statement of statements) {
-            if (statement) {
+            if (statement && !statement.startsWith('--')) {
               try {
                 await execSql(statement);
               } catch (sqlErr) {
+                // Log the problematic statement for debugging
                 console.warn(`[DataSources] SQL statement failed in ${path.basename(file)}:`, sqlErr.message);
+                console.warn(`[DataSources] Problematic statement: ${statement.substring(0, 100)}...`);
               }
             }
           }
