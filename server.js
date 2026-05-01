@@ -83,9 +83,20 @@ let TXT_PATH = _TXT_PATH;
 let SQL_PATHS = _SQL_PATHS;
 let SQL_LOADED = false;
 async function ensureSqlLoaded() {
-  if (!SQL_LOADED) {
-    // Do not execute SQL here; rely on file-based lookups for data in this environment
-    SQL_LOADED = (Array.isArray(SQL_PATHS) && SQL_PATHS.length > 0);
+  if (!SQL_LOADED && isDBReady()) {
+    try {
+      console.log(`[SQL] Loading ${SQL_PATHS.length} SQL files into database...`);
+      const success = await loadAllSql(DATA_DIR, SQL_PATHS);
+      SQL_LOADED = success;
+      if (success) {
+        console.log(`[SQL] ✓ All SQL files loaded successfully`);
+      } else {
+        console.error(`[SQL] ✗ Failed to load SQL files`);
+      }
+    } catch (err) {
+      console.error(`[SQL] Error loading SQL files:`, err.message);
+      SQL_LOADED = false;
+    }
   }
 }
 
@@ -7623,10 +7634,13 @@ app.use((err, req, res, next) => {
 });
 
 // Server başlat - hemen başlat, dosya indirme arka planda çalışsın
-const server = app.listen(APP_PORT, APP_HOST, () => {
+const server = app.listen(APP_PORT, APP_HOST, async () => {
   console.log(`[Server] ✅ Zagros OSINT running at http://${APP_HOST}:${APP_PORT}`);
   console.log(`[Deploy] Version: ${APP_VERSION}`);
   console.log(`[Environment] ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  
+  // SQL dosyalarını veritabanına yükle
+  await ensureSqlLoaded();
   
   // Dosya indirmeyi arka planda başlat - health check'i bloklamaz
   downloadDataFiles().catch(err => console.error('[Download] Arka plan indirme hatası:', err.message));
