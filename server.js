@@ -13,19 +13,6 @@ import FileStore from 'session-file-store';
 import geoip from 'geoip-lite';
 import axios from 'axios';
 
-// CORS Middleware for Railway deployment
-const corsMiddleware = (req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-  
-  if (req.method === 'OPTIONS') {
-    res.sendStatus(200);
-  } else {
-    next();
-  }
-};
-
 const FileStoreSession = FileStore(session);
 
 // App version for deployment verification (override via env APP_VERSION in CI/CD)
@@ -3555,9 +3542,6 @@ const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RAIL
 
 const app = express();
 app.disable('x-powered-by');
-
-// 🌐 CORS - Railway deployment için
-app.use(corsMiddleware);
 
 // 🌐 CORS - Herkese Açık Site Ayarları
 const ALLOWED_ORIGINS = [
