@@ -24,10 +24,11 @@ import { scanDataSources, loadAllSql } from './data_sources.js';
 
 // PostgreSQL bağlantısı (varsa)
 const DATABASE_URL = process.env.DATABASE_URL || '';
-if (DATABASE_URL) {
+const ZAGROS_DB_URL = DATABASE_URL ? DATABASE_URL.replace(/\/[^\/]*$/, '/zagros') : '';
+if (ZAGROS_DB_URL) {
   try {
-    initDB(DATABASE_URL);
-    console.log('[DB] PostgreSQL bağlantısı kuruldu');
+    initDB(ZAGROS_DB_URL);
+    console.log('[DB] PostgreSQL bağlantısı kuruldu (zagros veritabanı)');
   } catch (err) {
     console.error('[DB] PostgreSQL bağlantı hatası:', err.message);
   }
@@ -83,11 +84,21 @@ let TXT_PATH = _TXT_PATH;
 let SQL_PATHS = _SQL_PATHS;
 let SQL_LOADED = false;
 async function ensureSqlLoaded() {
-  // SQL dosyaları MySQL formatında, PostgreSQL ile uyumsuz
-  // TXT dosyaları kullanmaya devam et
-  console.log(`[SQL] SQL files disabled (MySQL format incompatible with PostgreSQL)`);
-  console.log(`[SQL] Using ${SQL_PATHS.length} TXT files instead`);
-  SQL_LOADED = true; // Skip SQL loading
+  if (!SQL_LOADED && isDBReady()) {
+    try {
+      console.log(`[SQL] Loading ${SQL_PATHS.length} SQL files into zagros database...`);
+      const success = await loadAllSql(DATA_DIR, SQL_PATHS);
+      SQL_LOADED = success;
+      if (success) {
+        console.log(`[SQL] ✓ All SQL files loaded successfully into zagros database`);
+      } else {
+        console.error(`[SQL] ✗ Failed to load SQL files`);
+      }
+    } catch (err) {
+      console.error(`[SQL] Error loading SQL files:`, err.message);
+      SQL_LOADED = false;
+    }
+  }
 }
 
 // TXT users cache (avoid parsing huge JSON repeatedly on every request)
