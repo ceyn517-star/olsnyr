@@ -12,8 +12,7 @@
     "postinstall": "npm rebuild geoip-lite --update-db"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
+    "node": ">=18.0.0"
   },
   "keywords": [
     "discord",
@@ -31,8 +30,5 @@
     "geoip-lite": "^2.0.1",
     "pg": "^8.20.0",
     "session-file-store": "^1.5.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.0"
   }
 }

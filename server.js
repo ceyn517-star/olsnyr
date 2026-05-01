@@ -322,8 +322,8 @@ async function downloadDataFiles() {
 
 detectDataSources();
 
-const APP_PORT = process.env.PORT ? Number(process.env.PORT) : (process.env.RAILWAY_ENVIRONMENT ? 3000 : 3000);
-const APP_HOST = process.env.RAILWAY_ENVIRONMENT ? '0.0.0.0' : (process.env.HOST || '127.0.0.1');
+const APP_PORT = Number(process.env.PORT) || 3000;
+const APP_HOST = '0.0.0.0';
 const SITE_PASSWORD = process.env.ZAGROS_PASSWORD ?? 'zagros31ceyn';
 const FINDCORD_API_KEY = '1fb785c3eb8069ba341836e0b25dabb4b20e439b4bce300123da1f791f12a3ea';
 
