@@ -4600,14 +4600,15 @@ function calculateBounds(markers) {
 
 // 🔐 API auth gate
 // Not: bazı endpoint'ler public olmalı (health/version/login/widget/CDN helpers).
+// Express `app.use('/api', ...)` altında `req.path` "/health" gibi gelir ("/api" prefix'i düşer)
 const PUBLIC_API_PREFIXES = [
-  '/api/health',
-  '/api/version',
-  '/api/login',
-  '/api/logout',
-  '/api/status',
-  '/api/widget/',      // Discord widget proxy (CORS helper)
-  '/api/discord/'      // CDN/url helper endpoints
+  '/health',
+  '/version',
+  '/login',
+  '/logout',
+  '/status',
+  '/widget/',      // Discord widget proxy (CORS helper)
+  '/discord/'      // CDN/url helper endpoints
 ];
 
 app.use('/api', (req, res, next) => {
