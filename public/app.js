@@ -202,8 +202,14 @@ window.addEventListener('DOMContentLoaded', () => {
   
   // Attach login button event listeners after DOM is ready
   const autoLoginBtn = document.getElementById('autoLoginBtn');
+  console.log('[DOMContentLoaded] autoLoginBtn element:', autoLoginBtn);
   if (autoLoginBtn) {
-    autoLoginBtn.addEventListener('click', autoLogin);
+    autoLoginBtn.addEventListener('click', () => {
+      console.log('[autoLoginBtn] Clicked!');
+      autoLogin();
+    });
+  } else {
+    console.error('[DOMContentLoaded] autoLoginBtn not found!');
   }
   
   const keyLoginBtn = document.getElementById('keyLoginBtn');
@@ -254,8 +260,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // Otomatik free giriş (boş body ile)
 async function autoLogin() {
+  console.log('[autoLogin] Starting auto login...');
   try {
     const response = await api('/api/login', { method: 'POST', body: JSON.stringify({}) });
+    console.log('[autoLogin] Login response:', response);
     // Store auth data globally
     authData = { tier: response.tier || 'free', ...response };
     await checkAuth();
@@ -267,7 +275,7 @@ async function autoLogin() {
     showToast(message, 'success');
     updateSubscriptionInfo(response);
   } catch (err) {
-    console.error('Auto login failed:', err);
+    console.error('[autoLogin] Auto login failed:', err);
   }
 }
 
