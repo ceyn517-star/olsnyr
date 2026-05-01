@@ -13,11 +13,17 @@ export function initDB(databaseUrl) {
     ssl: databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1')
       ? false
       : { rejectUnauthorized: false },
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
+    max: 10,
+    min: 2,
+    idleTimeoutMillis: 60000,
+    connectionTimeoutMillis: 20000,
+    statement_timeout: 30000,
+    query_timeout: 30000,
+    application_name: 'zagros-osint'
   });
   pool.on('error', (err) => console.error('[DB] Pool error:', err.message));
+  pool.on('connect', () => console.log('[DB] New connection established'));
+  pool.on('remove', () => console.log('[DB] Connection removed'));
   return pool;
 }
 
