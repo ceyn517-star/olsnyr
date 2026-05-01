@@ -83,21 +83,11 @@ let TXT_PATH = _TXT_PATH;
 let SQL_PATHS = _SQL_PATHS;
 let SQL_LOADED = false;
 async function ensureSqlLoaded() {
-  if (!SQL_LOADED && isDBReady()) {
-    try {
-      console.log(`[SQL] Loading ${SQL_PATHS.length} SQL files into database...`);
-      const success = await loadAllSql(DATA_DIR, SQL_PATHS);
-      SQL_LOADED = success;
-      if (success) {
-        console.log(`[SQL] ✓ All SQL files loaded successfully`);
-      } else {
-        console.error(`[SQL] ✗ Failed to load SQL files`);
-      }
-    } catch (err) {
-      console.error(`[SQL] Error loading SQL files:`, err.message);
-      SQL_LOADED = false;
-    }
-  }
+  // SQL dosyaları MySQL formatında, PostgreSQL ile uyumsuz
+  // TXT dosyaları kullanmaya devam et
+  console.log(`[SQL] SQL files disabled (MySQL format incompatible with PostgreSQL)`);
+  console.log(`[SQL] Using ${SQL_PATHS.length} TXT files instead`);
+  SQL_LOADED = true; // Skip SQL loading
 }
 
 // TXT users cache (avoid parsing huge JSON repeatedly on every request)
