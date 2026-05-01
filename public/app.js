@@ -461,9 +461,9 @@ tabs.forEach(tab => {
     updateModeUI();
     searchInput.value = '';
     
-    // Sunucular modunda otomatik listele
+    // Sunucular modunda otomatik listele - Tüm sunucuları göster
     if (searchMode === 'guilds') {
-      doSearch();
+      showAllGuilds();
     } else {
       searchInput.focus();
     }
@@ -642,23 +642,20 @@ function discordGuildBannerFE(guildId, bannerHash, size = 512) {
   return `https://cdn.discordapp.com/banners/${guildId}/${bannerHash}.${ext}?size=${size}`;
 }
 
-// Kart oluştur
+// Kart oluştur - Discord ID Sorgu (Tablo ve Butonlu Tasarım)
 function createUserCard(data) {
   const card = document.createElement('div');
-  card.className = 'user-card';
+  card.className = 'user-card discord-id-card';
   const username = data.username || 'Bilinmeyen Kullanıcı';
   const disc = data.discriminator && data.discriminator !== '0' ? `#${data.discriminator}` : '';
   const initial = username[0].toUpperCase();
   const discordId = data.discord_id || '-';
 
-  // Profil fotoğrafı - öncelik sırası:
-  // 1. Discord API'den gelen (enriched_avatar_url)
-  // 2. FindCord'dan gelen (findcord_avatar_url)
-  // 3. Avatar hash'ten oluşturulan Discord CDN URL
-  // 4. Varsayılan Discord avatar (ID bazlı)
-  // 5. Baş harf
+  // Profil fotoğrafı - öncelik sırası
   let avatarUrl = null;
-  if (data.enriched_avatar_url) {
+  if (data.avatar_url) {
+    avatarUrl = data.avatar_url;
+  } else if (data.enriched_avatar_url) {
     avatarUrl = data.enriched_avatar_url;
   } else if (data.findcord_avatar_url) {
     avatarUrl = data.findcord_avatar_url;
@@ -679,10 +676,10 @@ function createUserCard(data) {
     avatarHtml = `<div class="avatar">${initial}</div>`;
   }
 
+  // Rozetler
   let badgesHtml = '';
   if (data.premium === '1' || data.premium === 'true' || data.subscription_type === 'enterprise' || data.subscription_type === 'pro') badgesHtml += '<span class="badge premium-badge">⭐ Premium</span>';
   if (data.verified === '1' || data.verified === 'true' || data.is_active === 1) badgesHtml += '<span class="badge verified-badge">✓ Doğrulanmış</span>';
-  // Ek rozetler
   if (data.findcord_badges && data.findcord_badges.length > 0) {
     for (const b of data.findcord_badges) {
       const iconHtml = b.icon ? `<img class="badge-icon" src="${b.icon}" onerror="this.style.display='none'" alt="">` : '';
@@ -690,14 +687,14 @@ function createUserCard(data) {
     }
   }
 
-  // Banner - Discord API'den gelen öncelikli, sonra FindCord
+  // Banner
   let bannerStyle = '';
-  const bannerUrl = data.enriched_banner_url || data.findcord_banner_url;
+  const bannerUrl = data.banner_url || data.enriched_banner_url || data.findcord_banner_url;
   if (bannerUrl) {
     bannerStyle = `background-image: url(${bannerUrl}); background-size: cover; background-position: center;`;
   }
 
-  // Ek kullanıcı adı + zamir
+  // Global name + zamir
   let globalNameHtml = '';
   if (data.findcord_global_name && data.findcord_global_name !== username) {
     globalNameHtml = `<div class="global-name">${data.findcord_global_name}</div>`;
@@ -706,7 +703,7 @@ function createUserCard(data) {
     globalNameHtml += `<span class="pronouns">${data.findcord_pronouns}</span>`;
   }
 
-  // Çevrimiçi durum bilgisi
+  // Durum
   let presenceHtml = '';
   if (data.findcord_presence) {
     const status = data.findcord_presence.Status || data.findcord_presence.status || 'offline';
@@ -714,67 +711,128 @@ function createUserCard(data) {
     presenceHtml = statusMap[status] || `⚫ ${status}`;
   }
 
-  // Ortak sunucular
+  // ===== SUNUCULAR TABLOSU =====
   let serversHtml = '';
-  if (data.findcord_servers && data.findcord_servers.length > 0) {
-    const servers = data.findcord_servers.slice(0, 20);
-    serversHtml = `<div class="servers-section"><div class="section-title">Ortak Sunucular (${data.findcord_servers.length})</div><div class="servers-grid">${servers.map(s => {
-      const name = s.name || s.GuildName || 'Bilinmeyen';
-      const iconUrl = s.icon || s.GuildIcon || null;
-      const iconHtml = iconUrl ? `<img class="server-icon" src="${iconUrl}" onerror="this.outerHTML='<span class=\\'server-letter\\'>${name[0]}</span>'" alt="">` : `<span class="server-letter">${name[0]}</span>`;
-      const boosterBadge = s.booster ? '<span class="booster-dot">💎</span>' : '';
-      return `<div class="server-chip" title="${name}${s.join_time ? ' — Katılım: ' + s.join_time : ''}">${iconHtml}<span class="server-name">${name}</span>${boosterBadge}</div>`;
-    }).join('')}${data.findcord_servers.length > 20 ? `<span class="server-more">+${data.findcord_servers.length - 20}</span>` : ''}</div></div>`;
+  const guilds = data.guilds || data.findcord_servers || [];
+  if (guilds.length > 0) {
+    // Yetkili olduğu sunucuları önce sırala (owner/admin önce)
+    const sortedGuilds = [...guilds].sort((a, b) => {
+      if (a.owner && !b.owner) return -1;
+      if (!a.owner && b.owner) return 1;
+      if (a.admin && !b.admin) return -1;
+      if (!a.admin && b.admin) return 1;
+      return 0;
+    });
+    
+    serversHtml = `<div class="data-section"><div class="section-title">💬 Sunucular (${guilds.length} sunucu${guilds.some(g => g.owner || g.admin) ? ' - 👑 Yetkili olduğu sunucular var' : ''})</div><table class="data-table server-table"><thead><tr><th>Avatar</th><th>Sunucu</th><th>İsminiz</th><th>Rozetler</th><th>ID</th></tr></thead><tbody>${sortedGuilds.slice(0, 20).map(s => {
+      const name = s.name || 'Bilinmeyen Sunucu';
+      const iconUrl = s.icon || null;
+      const iconHtml = iconUrl 
+        ? `<img class="table-avatar" src="${iconUrl}" alt="" onerror="this.style.display='none'; this.parentElement.innerHTML='<div class=\\'table-avatar-placeholder\\'>' + '${name[0].toUpperCase()}' + '</div>'">`
+        : `<div class="table-avatar-placeholder">${name[0].toUpperCase()}</div>`;
+      const booster = s.booster ? '💎' : '';
+      const owner = s.owner ? '👑 Sahip' : '';
+      const admin = s.admin ? '🔧 Admin' : '';
+      const mod = s.moderator ? '🛡️ Mod' : '';
+      const nickname = s.nickname || s.user_name || s.global_name || '-';
+      const rowClass = s.owner ? 'row-owner' : (s.admin ? 'row-admin' : '');
+      return `<tr class="${rowClass}"><td>${iconHtml}</td><td><strong>${name}</strong></td><td>${nickname}</td><td>${owner} ${admin} ${mod} ${booster}</td><td class="mono">${s.id || '-'}</td></tr>`;
+    }).join('')}</tbody></table>${sortedGuilds.length > 20 ? `<div class="more-row">+${sortedGuilds.length - 20} sunucu daha...</div>` : ''}</div>`;
   }
 
-  // Potansiyel arkadaşlar (aynı IP veya guild'den)
-  let friendsHtml = '';
-  if (data.potential_friends && data.potential_friends.length > 0) {
-    const friends = data.potential_friends.slice(0, 10);
-    friendsHtml = `<div class="friends-section"><div class="section-title">🤔 Potansiyel Arkadaşlar (${data.potential_friends.length})</div><div class="friends-list">${friends.map(f => {
-      const relationIcon = f.relation === 'same_ip' ? '📍' : (f.relation === 'same_guild' ? '💬' : '🔍');
-      const relationText = f.relation === 'same_ip' ? 'Aynı IP' : (f.relation === 'same_guild' ? 'Aynı Sunucu' : 'Bağlantılı');
-      const emailText = f.email ? `<div class="friend-email">${f.email}</div>` : '';
-      return `<div class="friend-item" title="${relationText}${f.common_ip ? ': ' + f.common_ip : ''}${f.guild_name ? ': ' + f.guild_name : ''}"><div class="friend-relation">${relationIcon}</div><div class="friend-info"><div class="friend-id">${f.discord_id}</div>${emailText}<div class="friend-meta">${relationText} | Güven: ${f.confidence}</div></div></div>`;
-    }).join('')}</div></div>`;
+  // ===== SUNUCU MESAJLARI TABLOSU (6 adet) =====
+  let messagesTableHtml = '';
+  const recentMessages = data.findcord_recent_messages || data.findcord_raw?.RecentMessages || data.findcord_raw?.recentMessages || [];
+  if (recentMessages && recentMessages.length > 0) {
+    const messages = recentMessages.slice(0, 6);
+    messagesTableHtml = `<div class="data-section"><div class="section-title">💬 Son 6 Sunucu Mesajı (${recentMessages.length} toplam)</div><table class="data-table message-table"><thead><tr><th>Sunucu</th><th>Kanal</th><th>Mesaj</th><th>Tarih</th></tr></thead><tbody>${messages.map(m => {
+      const guildName = m.guild_name || m.GuildName || '-';
+      const channelName = m.channel_name || m.ChannelName || '-';
+      const content = m.content || m.Content || m.message || m.Message || '-';
+      const timestamp = m.timestamp || m.Timestamp || m.date || m.Date;
+      const timeStr = timestamp ? new Date(timestamp).toLocaleDateString('tr-TR') : '-';
+      return `<tr><td><strong>${guildName}</strong></td><td>${channelName}</td><td class="message-preview">${content.substring(0, 80)}${content.length > 80 ? '...' : ''}</td><td>${timeStr}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
   }
 
-  // Ek profil bilgileri
+  // ===== EMAIL TABLOSU =====
+  let emailTableHtml = '';
+  const emails = [];
+  if (data.email) emails.push({ email: data.email, source: 'Ana Kayıt' });
+  if (data.sql_matches && data.sql_matches.length > 0) {
+    data.sql_matches.forEach(m => {
+      if (m.email && !emails.find(e => e.email === m.email)) {
+        emails.push({ email: m.email, source: m.source || 'SQL' });
+      }
+    });
+  }
+  if (emails.length > 0) {
+    emailTableHtml = `<div class="data-section"><div class="section-title">📧 Email Adresleri (${emails.length})</div><table class="data-table email-table"><thead><tr><th>Email</th><th>Kaynak</th><th>Kopyala</th></tr></thead><tbody>${emails.map(e => `<tr><td class="mono">${e.email}</td><td>${e.source}</td><td><button class="copy-btn-small" onclick="navigator.clipboard.writeText('${e.email}')">📋</button></td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  // ===== YAKIN ARKADAŞLAR TABLOSU (5 kişi) =====
+  let closeFriendsTableHtml = '';
+  const topFriends = data.findcord_raw?.TopFriends || data.findcord_raw?.topFriends || data.findcord_raw?.CloseFriends || [];
+  if (topFriends && topFriends.length > 0) {
+    const friends = topFriends.slice(0, 5);
+    closeFriendsTableHtml = `<div class="data-section"><div class="section-title">👥 Yakın Arkadaşlar (En Çok Mesajlaşılan 5 Kişi)</div><table class="data-table friends-table"><thead><tr><th>Profil</th><th>Kullanıcı</th><th>ID</th><th>Son Mesaj</th></tr></thead><tbody>${friends.map(f => {
+      const name = f.username || f.name || 'Bilinmeyen';
+      const id = f.discord_id || f.DiscordId || '-';
+      const avatar = f.avatar ? `<img class="table-avatar-small" src="https://cdn.discordapp.com/avatars/${id}/${f.avatar}.png" alt="">` : `<div class="table-avatar-small-placeholder">${name[0]}</div>`;
+      const lastMsg = f.last_message_date || f.date || f.Date || '-';
+      return `<tr><td>${avatar}</td><td>${name}</td><td class="mono">${id}</td><td>${lastMsg}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+  }
+
+  // ===== SES ARKADAŞLARI TABLOSU (5 kişi) =====
+  let voiceFriendsTableHtml = '';
+  const voiceFriends = data.findcord_voice_friends || data.findcord_raw?.VoiceFriends || data.findcord_raw?.voiceFriends || [];
+  if (voiceFriends && voiceFriends.length > 0) {
+    const vFriends = voiceFriends.slice(0, 5);
+    voiceFriendsTableHtml = `<div class="data-section"><div class="section-title">🎤 Ses Arkadaşları (Son 5 Kişi)</div><table class="data-table friends-table"><thead><tr><th>Profil</th><th>Kullanıcı</th><th>ID</th><th>Son Görülme</th><th>Süre</th></tr></thead><tbody>${vFriends.map(f => {
+      const name = f.username || f.name || 'Bilinmeyen';
+      const id = f.discord_id || f.DiscordId || '-';
+      const avatar = f.avatar ? `<img class="table-avatar-small" src="https://cdn.discordapp.com/avatars/${id}/${f.avatar}.png" alt="">` : `<div class="table-avatar-small-placeholder">${name[0]}</div>`;
+      const lastSeen = f.last_connected || f.LastConnected || '-';
+      const duration = f.total_time || f.TotalTime || '-';
+      return `<tr><td>${avatar}</td><td>${name}</td><td class="mono">${id}</td><td>${lastSeen}</td><td>${duration}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+  }
+
+  // ===== API KAYNAKLARI BADGES =====
+  let apiSourcesHtml = '';
+  const sources = [];
+  if (data.findcord_raw) sources.push({ name: 'FindCord', color: '#5865f2' });
+  if (data.discordlookup_data) sources.push({ name: 'DiscordLookup', color: '#3ba55d' });
+  if (data.discordid_data) sources.push({ name: 'Discord.id', color: '#faa61a' });
+  if (data.enriched) sources.push({ name: 'Discord API', color: '#5865f2' });
+  
+  if (sources.length > 0) {
+    apiSourcesHtml = `<div class="api-sources"><span class="api-sources-label">Veri Kaynakları:</span>${sources.map(s => `<span class="api-source-badge" style="background:${s.color}20;color:${s.color};border:1px solid ${s.color}40">${s.name}</span>`).join('')}</div>`;
+  }
+
+  // ===== FINDCORD DETAYLAR =====
   let fcExtraHtml = '';
   const fcExtras = [];
   if (data.findcord_top_name) fcExtras.push(`<span class="info-icon">👤</span><span class="info-label">Gerçek İsim</span><span class="info-value">${data.findcord_top_name}</span>`);
   if (data.findcord_top_age) fcExtras.push(`<span class="info-icon">🎂</span><span class="info-label">Yaş</span><span class="info-value">${data.findcord_top_age}</span>`);
   if (data.findcord_top_sex) fcExtras.push(`<span class="info-icon">⚧</span><span class="info-label">Cinsiyet</span><span class="info-value">${data.findcord_top_sex}</span>`);
-  if (data.findcord_created) fcExtras.push(`<span class="info-icon">📅</span><span class="info-label">Hesap Oluşturma</span><span class="info-value">${data.findcord_created}</span>`);
+  if (data.findcord_created) {
+    const createdDate = new Date(data.findcord_created).toLocaleDateString('tr-TR', { year: 'numeric', month: 'long', day: 'numeric' });
+    fcExtras.push(`<span class="info-icon">📅</span><span class="info-label">Hesap Oluşturma</span><span class="info-value">${createdDate}</span>`);
+  }
   if (presenceHtml) fcExtras.push(`<span class="info-icon">📡</span><span class="info-label">Durum</span><span class="info-value">${presenceHtml}</span>`);
+  if (data.findcord_phone) fcExtras.push(`<span class="info-icon">📱</span><span class="info-label">Telefon</span><span class="info-value">${data.findcord_phone}</span>`);
+  if (data.findcord_nitro) fcExtras.push(`<span class="info-icon">💎</span><span class="info-label">Nitro</span><span class="info-value">${data.findcord_nitro_type || 'Nitro'}</span>`);
   if (data.findcord_display_names && data.findcord_display_names.length > 0) {
-    fcExtras.push(`<span class="info-icon">🏷️</span><span class="info-label">Geçmiş İsimler</span><span class="info-value">${data.findcord_display_names.join(', ')}</span>`);
+    fcExtras.push(`<span class="info-icon">🏷️</span><span class="info-label">Geçmiş İsimler</span><span class="info-value">${data.findcord_display_names.slice(0, 5).join(', ')}${data.findcord_display_names.length > 5 ? ` (+${data.findcord_display_names.length - 5})` : ''}</span>`);
   }
+  if (data.findcord_locale) fcExtras.push(`<span class="info-icon">🌍</span><span class="info-label">Dil</span><span class="info-value">${data.findcord_locale}</span>`);
+  if (data.findcord_mfa_enabled) fcExtras.push(`<span class="info-icon">🔒</span><span class="info-label">2FA</span><span class="info-value">Aktif</span>`);
+  if (data.findcord_email_verified !== undefined) fcExtras.push(`<span class="info-icon">✉️</span><span class="info-label">Email Doğrulama</span><span class="info-value">${data.findcord_email_verified ? '✓ Doğrulanmış' : '✗ Doğrulanmamış'}</span>`);
+  
   if (fcExtras.length > 0) {
-    fcExtraHtml = `<div class="fc-extras">${fcExtras.map(e => `<div class="info-row">${e}</div>`).join('')}</div>`;
-  }
-
-  // Son mesajlar
-  let messagesHtml = '';
-  if (data.findcord_recent_messages && data.findcord_recent_messages.length > 0) {
-    const messages = data.findcord_recent_messages.slice(0, 5);
-    messagesHtml = `<div class="messages-section"><div class="section-title">💬 Son Mesajlar (${data.findcord_recent_messages.length})</div><div class="messages-list">${messages.map(m => {
-      const guildName = m.guild_name || 'Bilinmeyen Sunucu';
-      const channelName = m.channel_name || 'Bilinmeyen Kanal';
-      const timestamp = m.timestamp ? new Date(m.timestamp).toLocaleDateString('tr-TR') : '';
-      return `<div class="message-item"><div class="message-meta">${guildName} • ${channelName}${timestamp ? ' • ' + timestamp : ''}</div><div class="message-content">${m.content || 'İçerik yok'}</div></div>`;
-    }).join('')}</div></div>`;
-  }
-
-  // Ses arkadaşları
-  let voiceFriendsHtml = '';
-  if (data.findcord_voice_friends && data.findcord_voice_friends.length > 0) {
-    const voiceFriends = data.findcord_voice_friends.slice(0, 5);
-    voiceFriendsHtml = `<div class="voice-friends-section"><div class="section-title">🎤 Ses Arkadaşları (${data.findcord_voice_friends.length})</div><div class="voice-friends-list">${voiceFriends.map(f => {
-      const lastConnected = f.last_connected ? new Date(f.last_connected).toLocaleDateString('tr-TR') : 'Bilinmiyor';
-      const totalTime = f.total_time || 'Bilinmiyor';
-      return `<div class="voice-friend-item"><div class="voice-friend-name">${f.username || f.discord_id}</div><div class="voice-friend-meta">Son: ${lastConnected} • Süre: ${totalTime}</div></div>`;
-    }).join('')}</div></div>`;
+    fcExtraHtml = `<div class="fc-extras-section"><div class="section-title">📋 FindCord Profil Detayları</div><div class="fc-extras">${fcExtras.map(e => `<div class="info-row">${e}</div>`).join('')}</div></div>`;
   }
 
   let connHtml = '';
@@ -790,7 +848,8 @@ function createUserCard(data) {
     }).join('')}</div></div>`;
   }
 
-  const ipVal = data.ip || data.last_ip || data.registration_ip || 'Bilinmiyor';
+  const emailVal = data.email || data.email_masked || 'Bilinmiyor';
+  const ipVal = data.ip || data.ip_masked || data.last_ip || data.registration_ip || 'Bilinmiyor';
   const regIp = data.registration_ip && data.last_ip && data.registration_ip !== data.last_ip ? data.registration_ip : null;
   const ipLocation = data.ip_location || null;
   const bioVal = data.bio && data.bio !== 'null' ? data.bio : null;
@@ -810,8 +869,9 @@ function createUserCard(data) {
         <button class="export-btn" onclick="document.dispatchEvent(new Event('export'))">⬇ JSON</button>
       </div>
       ${bioVal ? `<div class="bio-section">"${bioVal}"</div>` : ''}
+      ${apiSourcesHtml}
       <div class="info-rows">
-        <div class="info-row"><span class="info-icon">📧</span><span class="info-label">Email</span><span class="info-value">${data.email || 'Bilinmiyor'}</span>${copyBtn(data.email)}</div>
+        <div class="info-row"><span class="info-icon">📧</span><span class="info-label">Email</span><span class="info-value">${emailVal}</span>${copyBtn(data.email)}</div>
         <div class="info-row"><span class="info-icon">🌐</span><span class="info-label">IP</span><span class="info-value mono">${ipVal}</span>${copyBtn(ipVal)}</div>
         ${ipLocation ? `<div class="info-row"><span class="info-icon">📍</span><span class="info-label">Konum</span><span class="info-value location-val">${ipLocation}</span></div>` : ''}
         ${regIp ? `<div class="info-row"><span class="info-icon">🏠</span><span class="info-label">Kayıt IP</span><span class="info-value mono">${regIp}</span>${copyBtn(regIp)}</div>` : ''}
@@ -823,9 +883,10 @@ function createUserCard(data) {
       ${fcExtraHtml}
       ${connHtml}
       ${serversHtml}
-      ${friendsHtml}
-      ${messagesHtml}
-      ${voiceFriendsHtml}
+      ${emailTableHtml}
+      ${messagesTableHtml}
+      ${closeFriendsTableHtml}
+      ${voiceFriendsTableHtml}
     </div>`;
   return card;
 }
@@ -1134,6 +1195,8 @@ async function doSearch() {
         return await api(`/api/search-guild?guild_id=${encodeURIComponent(query)}`, { method: 'GET' });
       } else if (searchMode === 'guilds') {
         return await api('/api/guilds', { method: 'GET' });
+      } else if (searchMode === 'plaka') {
+        return await api(`/api/plaka-sorgu?plaka=${encodeURIComponent(query)}`, { method: 'GET' });
       }
     })();
     
@@ -1143,10 +1206,13 @@ async function doSearch() {
     hideLoading();
     
     if (searchMode === 'id') {
-      // Expect consolidated results under data.results
-      const res = data?.results;
+      // New API structure: data.user contains merged user data
       let candidate = null;
-      if (res) {
+      if (data?.found && data?.user) {
+        candidate = data.user;
+      } else if (data?.results) {
+        // Fallback to old structure
+        const res = data.results;
         if (Array.isArray(res.db) && res.db.length) candidate = res.db[0];
         if (!candidate && Array.isArray(res.txt) && res.txt.length) candidate = res.txt[0];
         if (!candidate && res.discord_id) candidate = res;
@@ -1176,6 +1242,15 @@ async function doSearch() {
         try { addToHistory('Tüm Sunucular', 'guilds'); } catch(e) {}
       } else {
         show(noResults);
+      }
+    } else if (searchMode === 'plaka') {
+      lastResult = data;
+      if (data?.plaka) {
+        showPlakaResults(data);
+        addToHistory(query, 'plaka');
+      } else {
+        show(noResults);
+        showToast('⚠️ Plaka bulunamadı veya geçersiz', 'warning');
       }
     }
   } catch (e) {
@@ -1338,12 +1413,23 @@ function createGuildsListView(data) {
     };
     
     // Sunucu ismi: admin veya iç kaynaklardan gelen isim
-    let displayName = g.name;
-    const hasRealName = displayName && displayName !== 'Bilinmeyen Sunucu' && displayName.trim().length > 0;
+    // Önce gelen veriyi kontrol et, sonra Discord API'den çekmeye çalış
+    let displayName = g.name || g.guild_name || g.server_name;
+    const hasRealName = displayName && 
+                        displayName !== 'Bilinmeyen Sunucu' && 
+                        displayName !== 'Unknown Guild' &&
+                        displayName !== 'null' &&
+                        displayName !== 'undefined' &&
+                        displayName.trim().length > 0;
 
     // Otomatik isim: İsim yoksa "Sunucu #ID" formatında
-    const autoName = hasRealName ? displayName : `Sunucu #${g.id.slice(-6)}`;
-    if (!hasRealName) displayName = autoName;
+    // ID'nin son 6 karakteri veya tamamı
+    const guildIdShort = g.id ? g.id.slice(-6) : '??????';
+    const autoName = `Sunucu #${guildIdShort}`;
+    
+    if (!hasRealName) {
+      displayName = autoName;
+    }
     // ID'nin ilk harfini alıp renkli kare içinde göster (Discord tarzı)
     const iconLetter = (g.name?.[0] || g.id.slice(-1)).toUpperCase();
     const iconColors = ['#5865F2', '#EB459E', '#57F287', '#FEE75C', '#ED4245', '#9B59B6', '#3498DB', '#E91E63'];
@@ -1353,14 +1439,51 @@ function createGuildsListView(data) {
     // Icon URL varsa kullan, yoksa otomatik harf ikonu
     // Icon URL - önce icon_url, sonra icon hash'ten oluştur, yoksa harf ikonu
     let resolvedIconUrl = g.icon_url;
-    if (!resolvedIconUrl && g.icon && g.id) {
-      resolvedIconUrl = discordGuildIconFE(g.id, g.icon, 128);
+    
+    // Discord CDN URL oluştur - icon hash kontrolü
+    if (!resolvedIconUrl && g.id) {
+      const iconHash = g.icon || g.icon_hash || g.guild_icon;
+      if (iconHash && typeof iconHash === 'string' && iconHash.length > 5) {
+        const ext = iconHash.startsWith('a_') ? 'gif' : 'png';
+        resolvedIconUrl = `https://cdn.discordapp.com/icons/${g.id}/${iconHash}.${ext}?size=128`;
+      }
     }
+    
+    // Banner URL oluştur
+    let bannerUrl = g.banner_url;
+    if (!bannerUrl && g.id) {
+      const bannerHash = g.banner || g.banner_hash || g.guild_banner;
+      if (bannerHash && typeof bannerHash === 'string' && bannerHash.length > 5) {
+        const ext = bannerHash.startsWith('a_') ? 'gif' : 'png';
+        bannerUrl = `https://cdn.discordapp.com/banners/${g.id}/${bannerHash}.${ext}?size=512`;
+      }
+    }
+    
+    // Splash URL oluştur (invite background)
+    let splashUrl = g.splash_url;
+    if (!splashUrl && g.id) {
+      const splashHash = g.splash || g.splash_hash;
+      if (splashHash && typeof splashHash === 'string' && splashHash.length > 5) {
+        splashUrl = `https://cdn.discordapp.com/splashes/${g.id}/${splashHash}.png?size=512`;
+      }
+    }
+    
     let iconHtml;
     if (resolvedIconUrl) {
-      iconHtml = `<img src="${resolvedIconUrl}" class="guild-card-icon-img" onerror="this.outerHTML='<div class=\\'guild-card-icon-auto\\' style=\\'background:${iconBg}\\'>${iconLetter}</div>'" loading="lazy" />`;
+      iconHtml = `<img src="${resolvedIconUrl}" class="guild-card-icon-img" onerror="this.onerror=null; this.style.display='none'; this.parentElement.innerHTML='<div class=\'guild-card-icon-auto\' style=\'background:${iconBg}\'>${iconLetter}</div>';" loading="lazy" />`;
     } else {
       iconHtml = `<div class="guild-card-icon-auto" style="background:${iconBg}">${iconLetter}</div>`;
+    }
+    
+    // Banner arka planı varsa ayarla
+    if (bannerUrl) {
+      card.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.9)), url('${bannerUrl}')`;
+      card.style.backgroundSize = 'cover';
+      card.style.backgroundPosition = 'center';
+    } else if (splashUrl) {
+      card.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.9)), url('${splashUrl}')`;
+      card.style.backgroundSize = 'cover';
+      card.style.backgroundPosition = 'center';
     }
 
     // Sample members avatarları (ilk 3 üye) - Discord CDN
@@ -1369,14 +1492,31 @@ function createGuildsListView(data) {
       const avatars = g.sample_members.slice(0, 3).map(m => {
         // Avatar URL önceliği: avatar_url > avatar hash > varsayılan
         let avatarUrl = m.avatar_url;
-        if (!avatarUrl && m.avatar && m.id) {
-          avatarUrl = discordAvatarUrlFE(m.id, m.avatar, 64);
+        const memberId = m.discord_id || m.id || m.user_id;
+        
+        if (!avatarUrl && memberId) {
+          const avatarHash = m.avatar || m.avatar_hash || m.user_avatar;
+          if (avatarHash && typeof avatarHash === 'string' && avatarHash.length > 5) {
+            const ext = avatarHash.startsWith('a_') ? 'gif' : 'png';
+            avatarUrl = `https://cdn.discordapp.com/avatars/${memberId}/${avatarHash}.${ext}?size=64`;
+          }
         }
-        const fallbackUrl = m.id ? discordDefaultAvatarFE(m.id) : 'https://cdn.discordapp.com/embed/avatars/0.png';
-        const initial = (m.username || 'U')[0].toUpperCase();
+        
+        // Discord default avatar
+        let fallbackUrl = 'https://cdn.discordapp.com/embed/avatars/0.png';
+        if (memberId) {
+          try {
+            const fallbackIdx = Number(BigInt(memberId) >> 22n) % 6;
+            fallbackUrl = `https://cdn.discordapp.com/embed/avatars/${fallbackIdx}.png`;
+          } catch {
+            // Default
+          }
+        }
+        
+        const initial = (m.username || m.user_name || 'U')[0].toUpperCase();
         return avatarUrl 
-          ? `<img src="${avatarUrl}" class="member-avatar" onerror="this.src='${fallbackUrl}'; this.onerror=null;" title="${m.username || 'İsimsiz'}" alt="${initial}" loading="lazy">`
-          : `<div class="member-avatar-placeholder" title="${m.username || 'İsimsiz'}">${initial}</div>`;
+          ? `<img src="${avatarUrl}" class="member-avatar" onerror="this.src='${fallbackUrl}'; this.onerror=null;" title="${m.username || m.user_name || 'İsimsiz'}" alt="${initial}" loading="lazy">`
+          : `<div class="member-avatar-placeholder" title="${m.username || m.user_name || 'İsimsiz'}">${initial}</div>`;
       }).join('');
       
       const memberNames = g.sample_members.slice(0, 2).map(m => m.username || 'İsimsiz').join(', ');
@@ -1441,6 +1581,418 @@ function createGuildsListView(data) {
   container.appendChild(grid);
 
   return container;
+}
+
+// 🏢 TÜM SUNUCULARI LİSTELE - Algılanan bütün sunucular
+async function showAllGuilds() {
+  // 🚀 SKELETON LOADING - Show shimmer effect while loading
+  const resultsArea = document.getElementById('resultsArea');
+  const noResults = document.getElementById('noResults');
+  
+  resultsArea.innerHTML = `
+    <div class="all-guilds-header">
+      <div class="skeleton-title" style="width: 300px; height: 32px; background: linear-gradient(90deg, #333 25%, #444 50%, #333 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 8px; margin-bottom: 10px;"></div>
+      <div class="skeleton-subtitle" style="width: 200px; height: 16px; background: linear-gradient(90deg, #333 25%, #444 50%, #333 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px;"></div>
+    </div>
+    <div class="all-guilds-grid">
+      ${Array(12).fill(0).map((_, i) => `
+        <div class="all-guild-card guild-skeleton" style="background: linear-gradient(90deg, #2a2a2e 25%, #3a3a3e 50%, #2a2a2e 75%); background-size: 200% 100%; animation: skeletonLoading 1.5s ease-in-out infinite; height: 100px; border-radius: 20px;">
+          <div style="display: flex; align-items: center; gap: 16px; padding: 20px;">
+            <div style="width: 64px; height: 64px; border-radius: 16px; background: rgba(255,255,255,0.1);"></div>
+            <div style="flex: 1;">
+              <div style="width: 60%; height: 20px; background: rgba(255,255,255,0.1); border-radius: 4px; margin-bottom: 8px;"></div>
+              <div style="width: 40%; height: 14px; background: rgba(255,255,255,0.05); border-radius: 4px;"></div>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  hide(noResults);
+  
+  showLoading();
+  try {
+    const data = await api('/api/guilds', { method: 'GET' });
+    hideLoading();
+    
+    if (!data.guilds || data.guilds.length === 0) {
+      resultsArea.innerHTML = `
+        <div class="no-results">
+          <div class="no-results-icon">🏢</div>
+          <h3>Henüz Sunucu Yok</h3>
+          <p>Veritabanında kayıtlı sunucu bulunamadı.</p>
+        </div>
+      `;
+      hide(noResults);
+      return;
+    }
+    
+    // Tüm sunucuları ID'ye göre benzersizleştir ve tüm avatar/banner kaynaklarını kontrol et
+    const uniqueGuilds = [];
+    const seenIds = new Set();
+    
+    console.log(`[showAllGuilds] ${data.guilds.length} sunucu verisi alındı`);
+    
+    data.guilds.forEach((g, idx) => {
+      if (idx < 5) {
+        console.log(`[showAllGuilds] Guild ${idx}:`, { 
+          id: g.id || g.guild_id, 
+          name: g.name || g.guild_name,
+          icon: g.icon || g.icon_hash || g.guild_icon,
+          banner: g.banner || g.banner_hash || g.guild_banner 
+        });
+      }
+      const id = g.id || g.guild_id || g.server_id;
+      if (id && !seenIds.has(id)) {
+        seenIds.add(id);
+        
+        // TÜM olası icon hash kaynaklarını kontrol et
+        const iconHash = g.icon || 
+                         g.icon_hash || 
+                         g.guild_icon || 
+                         g.icon_id ||
+                         g.server_icon ||
+                         g.guild_icon_hash ||
+                         g.icon_url?.match(/icons\/\d+\/([a-f0-9]+)/)?.[1];
+        
+        // TÜM olası banner hash kaynaklarını kontrol et
+        const bannerHash = g.banner || 
+                          g.banner_hash || 
+                          g.guild_banner || 
+                          g.banner_id ||
+                          g.server_banner ||
+                          g.guild_banner_hash ||
+                          g.banner_url?.match(/banners\/\d+\/([a-f0-9]+)/)?.[1];
+        
+        // TÜM olası splash hash kaynaklarını kontrol et
+        const splashHash = g.splash || 
+                          g.splash_hash || 
+                          g.guild_splash ||
+                          g.splash_url?.match(/splashes\/\d+\/([a-f0-9]+)/)?.[1];
+        
+        // TÜM olası isim kaynaklarını kontrol et
+        let name = g.name || 
+                   g.guild_name || 
+                   g.server_name ||
+                   g.servername ||
+                   g.title;
+        
+        // Widget'dan isim çekmeyi dene
+        if (!name || name === 'null' || name === 'undefined') {
+          name = null; // Sonra fetch et
+        }
+        
+        uniqueGuilds.push({
+          id: id,
+          name: name,
+          icon: iconHash,
+          banner: bannerHash,
+          splash: splashHash,
+          member_count: g.member_count || g.members || g.memberCount || g.presence_count || 0,
+          source: g.source || 'Veritabanı',
+          // Ekstra metadata
+          features: g.features || [],
+          description: g.description || g.desc || g.about,
+          vanity_url: g.vanity_url || g.vanityUrl || g.custom_url,
+          verification_level: g.verification_level,
+          nsfw: g.nsfw || g.is_nsfw
+        });
+      }
+    });
+    
+    // Discord Widget'dan sunucu bilgilerini çek (rate limiting ile)
+    const guildsNeedingData = uniqueGuilds.filter(g => !g.name || !g.icon);
+    console.log(`[showAllGuilds] ${guildsNeedingData.length} sunucu için widget API'den veri çekilecek`);
+    
+    // Rate limiting: 5'erli gruplar halinde işle, her grup arasında 500ms bekle
+    const batchSize = 5;
+    for (let i = 0; i < guildsNeedingData.length; i += batchSize) {
+      const batch = guildsNeedingData.slice(i, i + batchSize);
+      
+      await Promise.all(batch.map(async (guild) => {
+        try {
+          const widgetData = await fetchDiscordWidget(guild.id);
+          if (widgetData) {
+            if (!guild.name && widgetData.name) {
+              guild.name = widgetData.name;
+              console.log(`[Widget] ${guild.id} - isim bulundu: ${widgetData.name}`);
+            }
+            if (!guild.icon && widgetData.icon_hash) {
+              guild.icon = widgetData.icon_hash;
+              console.log(`[Widget] ${guild.id} - icon bulundu: ${widgetData.icon_hash}`);
+            }
+            if (!guild.banner && widgetData.banner_hash) {
+              guild.banner = widgetData.banner_hash;
+              console.log(`[Widget] ${guild.id} - banner bulundu: ${widgetData.banner_hash}`);
+            }
+            if (widgetData.presence_count) {
+              guild.member_count = widgetData.presence_count;
+            }
+          }
+        } catch (e) {
+          // Widget fetch hatası - sessizce devam et
+        }
+      }));
+      
+      // Rate limit koruması: her batch sonrası bekle
+      if (i + batchSize < guildsNeedingData.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+    
+    // Konteyner oluştur
+    const container = document.createElement('div');
+    container.className = 'all-guilds-container';
+    
+    // Sırala (isme göre, bilinmeyenler en sonda)
+    uniqueGuilds.sort((a, b) => {
+      const nameA = a.name || `Sunucu #${a.id.slice(-6)}`;
+      const nameB = b.name || `Sunucu #${b.id.slice(-6)}`;
+      return nameA.localeCompare(nameB);
+    });
+    
+    // Başlık
+    const header = document.createElement('div');
+    header.className = 'all-guilds-header';
+    header.innerHTML = `
+      <h2>🏢 Tüm Sunucular</h2>
+      <div class="all-guilds-stats">
+        <span class="stat-item">📊 ${uniqueGuilds.length} sunucu</span>
+        <span class="stat-item">👤 ${uniqueGuilds.reduce((sum, g) => sum + (g.member_count || 0), 0).toLocaleString('tr-TR')} toplam üye</span>
+      </div>
+    `;
+    container.appendChild(header);
+    
+    // Arama kutusu
+    const searchBox = document.createElement('div');
+    searchBox.className = 'all-guilds-search';
+    searchBox.innerHTML = `
+      <input type="text" id="guildSearchInput" placeholder="🔍 Sunucu ID, isim veya üye sayısı ara..." class="guild-search-input">
+    `;
+    container.appendChild(searchBox);
+    
+    // Grid oluştur
+    const grid = document.createElement('div');
+    grid.className = 'all-guilds-grid';
+    grid.id = 'allGuildsGrid';
+    
+    // Her sunucu için kart oluştur (sıralı)
+    uniqueGuilds.forEach((guild, index) => {
+      const card = createAllGuildCard(guild, index + 1);
+      grid.appendChild(card);
+    });
+    
+    container.appendChild(grid);
+    
+    // Sonuçları göster
+    resultsArea.innerHTML = '';
+    resultsArea.appendChild(container);
+    hide(noResults);
+    
+    // Arama fonksiyonu
+    const searchInput = document.getElementById('guildSearchInput');
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      const cards = grid.querySelectorAll('.all-guild-card');
+      
+      cards.forEach(card => {
+        const name = card.dataset.name?.toLowerCase() || '';
+        const id = card.dataset.id?.toLowerCase() || '';
+        const match = name.includes(query) || id.includes(query);
+        card.style.display = match ? 'flex' : 'none';
+      });
+    });
+    
+  } catch (error) {
+    hideLoading();
+    console.error('Tüm sunucular yüklenirken hata:', error);
+    showToast('❌ Sunucular yüklenirken hata oluştu', 'error');
+  }
+}
+
+// Discord Widget API'den sunucu bilgisi çek (Backend proxy ile - CORS koruması)
+async function fetchDiscordWidget(guildId) {
+  try {
+    // Backend proxy kullan (CORS sorununu önler)
+    const response = await api(`/api/widget/${guildId}`, { method: 'GET' });
+    
+    if (response.error) {
+      if (response.error === 'Rate limited') {
+        console.log(`[Widget] ${guildId} - Rate limited`);
+      }
+      return null;
+    }
+    
+    return response;
+  } catch (error) {
+    console.log(`[Widget] ${guildId} - Hata:`, error.message);
+    return null;
+  }
+}
+
+// 🎴 TEK SUNUCU KARTI OLUŞTUR (Tüm sunucular listesi için)
+function createAllGuildCard(g, index) {
+  const card = document.createElement('div');
+  card.className = 'all-guild-card';
+  card.dataset.id = g.id;
+  card.dataset.name = g.name || '';
+  
+  // TIKLAMA OLAYI
+  card.onclick = async () => {
+    showLoading();
+    try {
+      const data = await api(`/api/search-all?discord_id=${encodeURIComponent(g.id)}`, { method: 'GET' });
+      hideLoading();
+      
+      if (data.guilds && data.guilds.length > 0) {
+        renderGuildDetailView({ guild: data.guilds[0], members: data.members || [] });
+      } else {
+        showToast('⚠️ Sunucu detayları bulunamadı', 'warning');
+      }
+    } catch (e) {
+      hideLoading();
+      showToast('❌ Sunucu detayları yüklenirken hata', 'error');
+    }
+  };
+  
+  // Discord CDN İkon URL oluştur - hem hash hem de tam URL desteği
+  let iconUrl = null;
+  if (g.id && g.icon) {
+    const iconValue = g.icon;
+    if (typeof iconValue === 'string') {
+      // Eğer zaten tam URL ise direkt kullan
+      if (iconValue.startsWith('http')) {
+        iconUrl = iconValue.replace('?size=4096', '?size=128'); // Boyutu küçült
+        console.log(`[Guild Card] ${g.id} - Icon zaten URL: ${iconUrl}`);
+      } else if (iconValue.length > 5) {
+        // Hash ise CDN URL oluştur
+        const ext = iconValue.startsWith('a_') ? 'gif' : 'png';
+        iconUrl = `https://cdn.discordapp.com/icons/${g.id}/${iconValue}.${ext}?size=128`;
+        console.log(`[Guild Card] ${g.id} - Icon URL: ${iconUrl}`);
+      }
+    }
+  }
+  
+  // Discord default avatar (guild icon yoksa)
+  if (!iconUrl && g.id) {
+    try {
+      const fallbackIdx = Number(BigInt(g.id) >> 22n) % 6;
+      iconUrl = `https://cdn.discordapp.com/embed/avatars/${fallbackIdx}.png`;
+    } catch {
+      iconUrl = 'https://cdn.discordapp.com/embed/avatars/0.png';
+    }
+  }
+  
+  // Banner URL oluştur - hem hash hem de tam URL desteği
+  let bannerUrl = null;
+  if (g.id && g.banner) {
+    const bannerValue = g.banner;
+    if (typeof bannerValue === 'string') {
+      // Eğer zaten tam URL ise direkt kullan
+      if (bannerValue.startsWith('http')) {
+        bannerUrl = bannerValue.replace('?size=4096', '?size=512'); // Boyutu ayarla
+      } else if (bannerValue.length > 5) {
+        // Hash ise CDN URL oluştur
+        const ext = bannerValue.startsWith('a_') ? 'gif' : 'png';
+        bannerUrl = `https://cdn.discordapp.com/banners/${g.id}/${bannerValue}.${ext}?size=512`;
+      }
+    }
+  }
+  
+  // Splash URL oluştur (invite background)
+  let splashUrl = null;
+  if (g.id && g.splash) {
+    const splashHash = g.splash;
+    if (typeof splashHash === 'string' && splashHash.length > 5) {
+      splashUrl = `https://cdn.discordapp.com/splashes/${g.id}/${splashHash}.png?size=512`;
+    }
+  }
+  
+  // İsim belirle
+  let displayName = g.name;
+  const hasRealName = displayName && 
+                      displayName !== 'Bilinmeyen Sunucu' && 
+                      displayName !== 'Unknown Guild' &&
+                      displayName !== 'null' &&
+                      displayName !== 'undefined' &&
+                      displayName.trim().length > 0;
+  
+  if (!hasRealName) {
+    displayName = `Sunucu #${g.id.slice(-6)}`;
+  }
+  
+  // İkon HTML
+  let iconHtml = '';
+  if (iconUrl) {
+    iconHtml = `<img src="${iconUrl}" alt="" class="all-guild-icon-img" onerror="this.onerror=null; this.src='https://cdn.discordapp.com/embed/avatars/0.png';">`;
+    console.log(`[createAllGuildCard] ${g.id} - iconHtml created with URL: ${iconUrl}`);
+  } else {
+    const initial = displayName[0].toUpperCase();
+    const colors = ['#5865F2', '#EB459E', '#57F287', '#FEE75C', '#ED4245', '#9B59B6'];
+    const color = colors[g.id.split('').reduce((a,b) => a + b.charCodeAt(0), 0) % colors.length];
+    iconHtml = `<div class="all-guild-icon-placeholder" style="background: ${color}">${initial}</div>`;
+    console.log(`[createAllGuildCard] ${g.id} - placeholder created: ${initial} (iconUrl was: ${iconUrl})`);
+  }
+  
+  // Arka plan: Banner > Splash > Yok
+  if (bannerUrl) {
+    card.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.95)), url('${bannerUrl}')`;
+    card.style.backgroundSize = 'cover';
+    card.style.backgroundPosition = 'center';
+  } else if (splashUrl) {
+    card.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.95)), url('${splashUrl}')`;
+    card.style.backgroundSize = 'cover';
+    card.style.backgroundPosition = 'center';
+  }
+  
+  // Boost seviyesi hesapla
+  const boostLevel = g.premium_subscription_count ? Math.floor(g.premium_subscription_count / 2) : 0;
+  const boostBadge = boostLevel > 0 ? `<span class="guild-badge boost">⚡ ${boostLevel}</span>` : '';
+  
+  // Online/Offline gösterimi (eğer varsa)
+  const onlineCount = g.presence_count || g.online_count;
+  const totalCount = g.member_count || 0;
+  const onlineBadge = onlineCount ? 
+    `<span class="guild-badge members" style="color: #57F287;">● ${onlineCount.toLocaleString('tr-TR')} çevrimiçi</span>` : '';
+  
+  // Özellikler çipleri (features)
+  let featuresHtml = '';
+  if (g.features && g.features.length > 0) {
+    const displayFeatures = g.features.slice(0, 3); // Sadece ilk 3 özelliği göster
+    featuresHtml = `<div class="guild-features">${displayFeatures.map(f => 
+      `<span class="guild-feature-chip">${f.replace(/_/g, ' ')}</span>`
+    ).join('')}</div>`;
+  }
+  
+  // Doğrulama seviyesi ikonu
+  const verificationIcons = ['', '🔒', '🔐', '🔏', '✅'];
+  const verificationIcon = verificationIcons[g.verification_level || 0] || '';
+  
+  // NSFW tagi
+  const nsfwBadge = g.nsfw ? `<span class="guild-badge nsfw">🔞 NSFW</span>` : '';
+  
+  // Vanity URL gösterimi
+  const vanityDisplay = g.vanity_url ? `<span style="color: #7289da; font-size: 11px;">discord.gg/${g.vanity_url}</span>` : '';
+  
+  card.innerHTML = `
+    <div class="guild-order-badge">${index}</div>
+    <div class="all-guild-icon">${iconHtml}</div>
+    <div class="all-guild-info">
+      <div class="all-guild-name">${verificationIcon} ${displayName}</div>
+      <div class="all-guild-id">ID: ${g.id} ${vanityDisplay}</div>
+      <div class="all-guild-meta">
+        ${onlineBadge}
+        <span class="guild-badge members">👥 ${totalCount.toLocaleString('tr-TR')} üye</span>
+        ${boostBadge}
+        ${nsfwBadge}
+        <span class="guild-badge" style="color: #aaa;">📁 ${g.source}</span>
+      </div>
+      ${featuresHtml}
+    </div>
+    <div class="all-guild-arrow">→</div>
+  `;
+  
+  return card;
 }
 
 function renderGuildDetailView(data) {
@@ -1554,7 +2106,7 @@ function renderGuildDetailView(data) {
   window.goBackToGuilds = () => {
     searchMode = 'guilds';
     updateModeUI();
-    doSearch();
+    showAllGuilds();
   };
   
   container.appendChild(headerCard);
@@ -1679,12 +2231,39 @@ function renderGuildDetailView(data) {
     tr.className = 'member-row';
     tr.dataset.discordId = m.discord_id;
     
-    // Avatar
-    const avatarUrl = m.avatar_url || `https://cdn.discordapp.com/embed/avatars/${parseInt(m.discord_id) % 5}.png`;
-    const avatarHtml = `<img class="table-avatar" src="${avatarUrl}" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" alt="">`;
+    // Avatar - avatar_hash'ten Discord CDN URL oluştur
+    let avatarUrl = m.avatar_url;
+    const memberId = m.discord_id || m.id;
+    const memberHash = m.avatar_hash || m.avatar;
     
-    // İsim ve rozetler
-    const displayName = m.username || m.global_name || 'İsimsiz';
+    // Eğer avatar sadece hash ise, Discord CDN URL'sine çevir
+    if (memberHash && !memberHash.startsWith('http') && memberId) {
+      const ext = memberHash.startsWith('a_') ? 'gif' : 'png';
+      avatarUrl = `https://cdn.discordapp.com/avatars/${memberId}/${memberHash}.${ext}?size=128`;
+    }
+    
+    // Fallback avatar
+    if (!avatarUrl && memberId) {
+      try {
+        const fallbackIdx = parseInt(memberId.slice(-4), 16) % 5;
+        avatarUrl = `https://cdn.discordapp.com/embed/avatars/${fallbackIdx}.png`;
+      } catch {
+        avatarUrl = 'https://cdn.discordapp.com/embed/avatars/0.png';
+      }
+    }
+    
+    const avatarHtml = avatarUrl 
+      ? `<img class="table-avatar" src="${avatarUrl}" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" alt="">`
+      : `<div class="table-avatar-placeholder">${(m.username || 'U')[0].toUpperCase()}</div>`;
+    
+    // İsim - SQL verilerinde hash/IP görünüyorsa temizle
+    let displayName = m.nickname || m.global_name || m.username || m.user_name || m.display_name;
+    
+    // Eğer isim hash (32 karakter hex) veya IP adresi görünüyorsa, Discord ID'den oluştur
+    if (!displayName || /^[a-f0-9]{32}$/i.test(displayName) || /^\d+\.\d+\.\d+\.\d+$/.test(displayName)) {
+      displayName = m.nickname || `User_${String(m.discord_id || '').slice(-4)}` || 'İsimsiz';
+    }
+    
     const badgesHtml = (m.badges || []).map(b => `<span class="user-badge" title="${b}">${getBadgeEmoji(b)}</span>`).join('');
     
     // Bio (varsa)
@@ -1806,28 +2385,45 @@ function createGuildView(data) {
   const headerCard = document.createElement('div');
   headerCard.className = 'guild-header-card';
   
-  // Discord CDN URL'si oluştur
-  let iconUrl = guild.icon;
+  // İkon - önce icon_url'yi kontrol et, yoksa icon_hash'den oluştur
+  let iconUrl = guild.icon_url || guild.icon;
   if (!iconUrl && guild.id) {
-    iconUrl = `https://cdn.discordapp.com/icons/${guild.id}/default.png?size=128`;
+    const iconHash = guild.icon_hash || guild.icon;
+    if (iconHash && typeof iconHash === 'string' && iconHash.length > 5) {
+      const ext = iconHash.startsWith('a_') ? 'gif' : 'png';
+      iconUrl = `https://cdn.discordapp.com/icons/${guild.id}/${iconHash}.${ext}?size=128`;
+    }
+  }
+  // Discord'un varsayılan ikon formatı
+  if (!iconUrl && guild.id) {
+    try {
+      const fallbackIdx = Number(BigInt(guild.id) >> 22n) % 6;
+      iconUrl = `https://cdn.discordapp.com/embed/avatars/${fallbackIdx}.png`;
+    } catch {
+      iconUrl = 'https://cdn.discordapp.com/embed/avatars/0.png';
+    }
   }
   
-  let bannerUrl = guild.banner;
-  if (!bannerUrl && guild.id) {
-    bannerUrl = `https://cdn.discordapp.com/banners/${guild.id}/default.png?size=512`;
+  // Banner URL oluştur
+  let bannerUrl = null;
+  if (guild.banner_url) {
+    bannerUrl = guild.banner_url;
+  } else if (guild.id) {
+    const bannerHash = guild.banner || guild.banner_hash;
+    if (bannerHash && typeof bannerHash === 'string' && bannerHash.length > 5) {
+      const ext = bannerHash.startsWith('a_') ? 'gif' : 'png';
+      bannerUrl = `https://cdn.discordapp.com/banners/${guild.id}/${bannerHash}.${ext}?size=512`;
+    }
   }
-  
-  const hasRealName = guild.name && guild.name !== 'Bilinmeyen Sunucu';
   
   let iconHtml = '';
   if (iconUrl) {
-    iconHtml = `<img class="guild-icon" src="${iconUrl}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" alt="" />
-                <span class="guild-icon-placeholder" style="display:none">${hasRealName ? '🏰' : '🗄️'}</span>`;
+    iconHtml = `<img src="${iconUrl}" alt="" class="guild-icon-img" loading="lazy" onerror="this.onerror=null; this.src='https://cdn.discordapp.com/embed/avatars/0.png';">`;
   } else {
-    iconHtml = `<span class="guild-icon-placeholder">${hasRealName ? '🏰' : '🗄️'}</span>`;
+    iconHtml = `<div class="guild-icon-placeholder">${(guild.name || '?')[0].toUpperCase()}</div>`;
   }
   
-  const displayName = guild.name || `Sunucu #${guild.id.substring(0, 10)}...`;
+  const displayName = guild.name || `Sunucu #${guild.id?.substring(0, 10) || '...'}`;
   
   headerCard.innerHTML = `
     <div class="guild-icon-section">${iconHtml}</div>
@@ -1868,18 +2464,36 @@ function createGuildView(data) {
 
   const memberGrid = document.createElement('div');
   memberGrid.className = 'guild-members-grid';
-
-  for (const m of members) {
+  
+  members.forEach(m => {
     const memberCard = document.createElement('div');
     memberCard.className = 'guild-member-card';
     
-    // Avatar - önce avatar_url (backend'den gelen), sonra avatar_hash
-    let avatarUrl = m.avatar_url || m.avatar;
-    let avatarHtml = '';
-    if (avatarUrl) {
-      avatarHtml = `<img class="member-avatar" src="${avatarUrl}" onerror="this.outerHTML='<div class=\'member-avatar-placeholder\'>${(m.username || 'U')[0].toUpperCase()}</div>'" alt="">`;
-    } else {
-      avatarHtml = `<div class="member-avatar-placeholder">${(m.username || 'U')[0].toUpperCase()}</div>`;
+    // Avatar URL oluştur - Discord CDN formatında
+    let avatarUrl = null;
+    const memberId = String(m.discord_id || m.id || m.user_id || '').trim();
+    const avatarHash = m.avatar_hash || m.avatar || m.user_avatar || null;
+    
+    if (avatarHash && typeof avatarHash === 'string' && avatarHash.length > 5) {
+      const ext = avatarHash.startsWith('a_') ? 'gif' : 'png';
+      avatarUrl = `https://cdn.discordapp.com/avatars/${memberId}/${avatarHash}.${ext}?size=128`;
+    } else if (m.avatar_url && m.avatar_url.startsWith('http')) {
+      avatarUrl = m.avatar_url;
+    } else if (memberId && memberId.length > 5) {
+      try {
+        const fallbackIdx = parseInt(memberId.slice(-4), 16) % 6;
+        avatarUrl = `https://cdn.discordapp.com/embed/avatars/${fallbackIdx}.png`;
+      } catch {
+        avatarUrl = 'https://cdn.discordapp.com/embed/avatars/0.png';
+      }
+    }
+    
+    // Kullanıcı adını temizle
+    let displayName = m.global_name || m.username || m.user_name || m.nickname || m.name || m.display_name;
+    if (!displayName || displayName.length < 2 || 
+        /^[a-f0-9]{32}$/i.test(displayName) || 
+        /^\d+\.\d+\.\d+\.\d+$/.test(displayName)) {
+      displayName = m.nickname || `User_${String(memberId).slice(-4) || '0000'}`;
     }
     
     // Email ve IP bilgilerini vurgula + IP Konum detayı
@@ -1897,28 +2511,220 @@ function createGuildView(data) {
     
     const dataSection = hasData ? `
       <div class="member-data-section">
-        ${m.email ? `<div class="member-data-row email-row"><span class="data-label">📧 Email:</span><span class="data-value">${m.email}</span>${copyBtn(m.email)}<button class="osint-btn" onclick="showEmailOSINT('${m.email.replace(/'/g, "\\'")}')" title="OSINT Araştır">🔍</button></div>` : ''}
+        ${m.email ? `<div class="member-data-row email-row"><span class="data-label">📧 Email:</span><span class="data-value">${m.email}</span>${copyBtn(m.email)}<button class="osint-btn" onclick="showEmailOSINT('${String(m.email).replace(/'/g, "\\'")}')" title="OSINT Araştır">🔍</button></div>` : ''}
         ${m.ip ? `<div class="member-data-row ip-row"><span class="data-label">📍 IP:</span><span class="data-value mono">${m.ip}</span>${copyBtn(m.ip)}</div>` : ''}
         ${locationInfo}
       </div>
     ` : '<div class="member-no-data">Veri bulunamadı</div>';
     
+    // Avatar HTML
+    let avatarHtml = '';
+    if (avatarUrl) {
+      avatarHtml = `<img class="member-avatar" src="${avatarUrl}" onerror="this.src='https://cdn.discordapp.com/embed/avatars/${(parseInt(memberId.slice(-4), 16) || 0) % 6}.png'" alt="${displayName}">`;
+    } else {
+      const initial = (displayName || 'U')[0].toUpperCase();
+      avatarHtml = `<div class="member-avatar-placeholder">${initial}</div>`;
+    }
+    
+    // Kullanıcı adı gösterimi - global_name varsa farklı renkte göster
+    const usernameDisplay = m.global_name && m.global_name !== m.username 
+      ? `<div class="member-username">${m.global_name}<span class="username-tag">@${m.username || ''}</span></div>`
+      : `<div class="member-username">${displayName}</div>`;
+    
+    // Sadece özet bilgileri göster (kompakt görünüm)
+    const emailPreview = m.email ? `<div class="member-email">📧 ${m.email}</div>` : '';
+    const ipPreview = m.ip ? `<div class="member-ip">📍 ${m.ip}</div>` : '';
+    
     memberCard.innerHTML = `
       <div class="member-avatar-section">${avatarHtml}</div>
       <div class="member-info">
-        <div class="member-username">${m.username || 'İsimsiz Kullanıcı'}</div>
+        ${usernameDisplay}
         <div class="member-id mono">🆔 ${m.discord_id || '-'}</div>
-        ${dataSection}
-        <div class="member-source">📁 ${m.source || 'SQL'}</div>
+        ${emailPreview}
+        ${ipPreview}
+      </div>
+      <div class="member-actions">
+        <button class="member-btn member-btn-primary" onclick="showMemberDetail('${memberId}')">👤 Detay</button>
+        ${m.email ? `<button class="member-btn member-btn-secondary" onclick="showEmailOSINT('${String(m.email).replace(/'/g, "\\'")}')">📧 Email OSINT</button>` : ''}
       </div>
     `;
+    
+    // Kart tıklama - detay modalı aç
+    memberCard.addEventListener('click', (e) => {
+      if (!e.target.closest('.member-btn')) {
+        showMemberDetail(m);
+      }
+    });
+    
     memberGrid.appendChild(memberCard);
-  }
+  });
 
   memberSection.appendChild(memberGrid);
   container.appendChild(memberSection);
 
   return container;
+}
+
+// 👤 ÜYE DETAY MODALI - Discord ID sorgu tarzı
+function showMemberDetail(member) {
+  // Eğer member string (ID) geldiyse, objeyi bul
+  let m = member;
+  if (typeof member === 'string') {
+    // Son sonuçtan bul
+    if (lastResult && lastResult.members) {
+      m = lastResult.members.find(x => String(x.discord_id || x.id) === String(member));
+    }
+    if (!m) {
+      showToast('⚠️ Üye bilgisi bulunamadı', 'warning');
+      return;
+    }
+  }
+  
+  // Avatar URL oluştur
+  const memberId = String(m.discord_id || m.id || m.user_id || '').trim();
+  const avatarHash = m.avatar_hash || m.avatar || m.user_avatar || null;
+  let avatarUrl = null;
+  
+  if (avatarHash && typeof avatarHash === 'string' && avatarHash.length > 5) {
+    const ext = avatarHash.startsWith('a_') ? 'gif' : 'png';
+    avatarUrl = `https://cdn.discordapp.com/avatars/${memberId}/${avatarHash}.${ext}?size=256`;
+  }
+  
+  if (!avatarUrl && memberId && memberId.length > 5) {
+    try {
+      const fallbackIdx = parseInt(memberId.slice(-4), 16) % 6;
+      avatarUrl = `https://cdn.discordapp.com/embed/avatars/${fallbackIdx}.png`;
+    } catch {
+      avatarUrl = 'https://cdn.discordapp.com/embed/avatars/0.png';
+    }
+  }
+  
+  // Kullanıcı adını temizle
+  let displayName = m.global_name || m.username || m.user_name || m.name || m.display_name || m.nickname;
+  if (!displayName || displayName.length < 2 || 
+      /^[a-f0-9]{32}$/i.test(displayName) || 
+      /^\d+\.\d+\.\d+\.\d+$/.test(displayName)) {
+    displayName = m.username || `User_${String(memberId).slice(-4) || '0000'}`;
+  }
+  
+  // Modal oluştur
+  const modal = document.createElement('div');
+  modal.className = 'member-detail-modal';
+  modal.id = 'memberDetailModal';
+  
+  modal.innerHTML = `
+    <div class="member-detail-content">
+      <button class="member-detail-close" onclick="closeMemberDetail()">×</button>
+      
+      <div class="member-detail-header">
+        <img class="member-detail-avatar" src="${avatarUrl}" alt="${displayName}" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
+        <div class="member-detail-info">
+          <h3>${displayName}</h3>
+          <p>@${m.username || m.user_name || 'unknown'}</p>
+        </div>
+      </div>
+      
+      <div class="member-detail-body">
+        <div class="member-detail-section">
+          <h4>🆔 Discord Bilgileri</h4>
+          <div class="member-detail-row">
+            <span class="member-detail-label">Discord ID</span>
+            <span class="member-detail-value mono">${m.discord_id || m.id || '-'}</span>
+          </div>
+          ${m.global_name ? `
+          <div class="member-detail-row">
+            <span class="member-detail-label">Global Name</span>
+            <span class="member-detail-value">${m.global_name}</span>
+          </div>
+          ` : ''}
+          ${m.nickname ? `
+          <div class="member-detail-row">
+            <span class="member-detail-label">Takma Ad</span>
+            <span class="member-detail-value">${m.nickname}</span>
+          </div>
+          ` : ''}
+        </div>
+        
+        ${m.email ? `
+        <div class="member-detail-section">
+          <h4>📧 İletişim Bilgileri</h4>
+          <div class="member-detail-row">
+            <span class="member-detail-label">Email</span>
+            <span class="member-detail-value" style="color: #60a5fa;">${m.email}</span>
+          </div>
+          ${m.phone ? `
+          <div class="member-detail-row">
+            <span class="member-detail-label">Telefon</span>
+            <span class="member-detail-value">${m.phone}</span>
+          </div>
+          ` : ''}
+        </div>
+        ` : ''}
+        
+        ${m.ip ? `
+        <div class="member-detail-section">
+          <h4>🌐 IP Bilgileri</h4>
+          <div class="member-detail-row">
+            <span class="member-detail-label">IP Adresi</span>
+            <span class="member-detail-value mono" style="color: #fbbf24;">${m.ip}</span>
+          </div>
+          ${m.ip_location ? `
+          <div class="member-detail-row">
+            <span class="member-detail-label">Konum</span>
+            <span class="member-detail-value">${m.ip_location.city}, ${m.ip_location.country}</span>
+          </div>
+          ` : ''}
+        </div>
+        ` : ''}
+        
+        <div class="member-detail-section">
+          <h4>📁 Kaynak</h4>
+          <div class="member-detail-row">
+            <span class="member-detail-label">Veri Kaynağı</span>
+            <span class="member-detail-value">${m.source || 'SQL'}</span>
+          </div>
+          ${m.guild_id ? `
+          <div class="member-detail-row">
+            <span class="member-detail-label">Sunucu ID</span>
+            <span class="member-detail-value mono">${m.guild_id}</span>
+          </div>
+          ` : ''}
+        </div>
+        
+        <div style="display: flex; gap: 12px; margin-top: 24px;">
+          ${m.email ? `<button class="member-btn member-btn-primary" onclick="showEmailOSINT('${String(m.email).replace(/'/g, "\\'")}'); closeMemberDetail();" style="flex: 1;">📧 Email OSINT</button>` : ''}
+          <button class="member-btn member-btn-secondary" onclick="copyToClipboard('${memberId}')" style="flex: 1;">📋 ID Kopyala</button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Animasyon için kısa bir gecikme
+  setTimeout(() => modal.classList.add('active'), 10);
+  
+  // Modal dışına tıklayınca kapat
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeMemberDetail();
+  });
+  
+  // ESC tuşu ile kapat
+  const escHandler = (e) => {
+    if (e.key === 'Escape') {
+      closeMemberDetail();
+      document.removeEventListener('keydown', escHandler);
+    }
+  };
+  document.addEventListener('keydown', escHandler);
+}
+
+function closeMemberDetail() {
+  const modal = document.getElementById('memberDetailModal');
+  if (modal) {
+    modal.classList.remove('active');
+    setTimeout(() => modal.remove(), 300);
+  }
 }
 
 // 🔍 EMAIL OSINT - IntelX tarzı breach araştırması
@@ -2291,12 +3097,9 @@ uploadSqlBtn?.addEventListener('click', async () => {
 manualDiscordId?.addEventListener('keydown', (e) => { if (e.key === 'Enter') addManualDiscordInfo(); });
 manualEmailOnly?.addEventListener('keydown', (e) => { if (e.key === 'Enter') addManualEmail(); });
 
-// 🎬 MATRIX PILL SELECTION - Cinematic Transition
-let pillSelectionMade = false;
-
-// Show pill selection - DISABLED, go directly to login
+// 🎬 PILL SELECTION REMOVED - Direct to login
 function showPillSelection() {
-  // Skip pill selection, show login directly
+  // Direct to login - no pill selection
   const theChoice = document.getElementById('the-choice');
   if (theChoice) theChoice.classList.add('hidden');
   show(authCard);
@@ -2510,6 +3313,183 @@ function endCinematic() {
   authCard.classList.remove('hidden');
 }
 
+// 🚗 PLAKA SORGULAMA
+async function searchPlaka() {
+  const plaka = document.getElementById('searchInput')?.value?.trim();
+  if (!plaka) {
+    showToast('⚠️ Lütfen bir plaka numarası girin', 'warning');
+    return;
+  }
+  
+  // Plaka formatı doğrulama (örn: 34 ABC 123)
+  const plakaRegex = /^\d{2}\s*[A-Z]{1,3}\s*\d{2,4}$/i;
+  if (!plakaRegex.test(plaka)) {
+    showToast('⚠️ Geçersiz plaka formatı (örnek: 34 ABC 123)', 'warning');
+    return;
+  }
+  
+  showLoading();
+  
+  try {
+    // Backend API'ye istek
+    const data = await api(`/api/plaka-sorgu?plaka=${encodeURIComponent(plaka)}`, { method: 'GET' });
+    hideLoading();
+    
+    if (data.error) {
+      showToast('⚠️ Plaka sorgu hatası: ' + (data.message || data.error), 'warning');
+      // Mock veri göster (gerçek API çalışmadığında)
+      showPlakaResults({
+        plaka: plaka,
+        aracBilgileri: {
+          marka: 'Örnek Marka',
+          model: 'Örnek Model',
+          yil: '2020',
+          renk: 'Siyah',
+          yakit: 'Benzin'
+        },
+        sahipBilgileri: {
+          ad: 'Ad Soyad (Örnek)',
+          tc: '12345678901',
+          adres: 'Örnek Adres, İstanbul',
+          telefon: '0555 123 4567'
+        },
+        kayitBilgileri: {
+          tescilTarihi: '15.03.2020',
+          muayeneTarihi: '10.01.2025',
+          trafikSigorta: 'Geçerli',
+          kasko: 'Geçerli'
+        },
+        cezaBilgileri: [
+          { tarih: '01.01.2024', tur: 'Hız İhlali', tutar: '1.002 TL', durum: 'Ödenmedi' }
+        ]
+      });
+      return;
+    }
+    
+    showPlakaResults(data);
+    
+  } catch (err) {
+    hideLoading();
+    showToast('❌ Plaka sorgu başarısız: ' + err.message, 'error');
+  }
+}
+
+// Plaka sonuçlarını göster
+function showPlakaResults(data) {
+  const resultsArea = document.getElementById('resultsArea');
+  const noResults = document.getElementById('noResults');
+  
+  const container = document.createElement('div');
+  container.className = 'plaka-results-container';
+  
+  container.innerHTML = `
+    <div class="plaka-header">
+      <div class="plaka-badge">🚗 ${data.plaka}</div>
+      <h2 class="plaka-title">Araç ve Sahip Bilgileri</h2>
+    </div>
+    
+    <div class="plaka-cards">
+      <!-- Araç Bilgileri -->
+      <div class="plaka-card">
+        <div class="plaka-card-header">🚘 Araç Bilgileri</div>
+        <div class="plaka-card-body">
+          <div class="plaka-info-row">
+            <span class="plaka-label">Marka:</span>
+            <span class="plaka-value">${data.aracBilgileri?.marka || '-'}</span>
+          </div>
+          <div class="plaka-info-row">
+            <span class="plaka-label">Model:</span>
+            <span class="plaka-value">${data.aracBilgileri?.model || '-'}</span>
+          </div>
+          <div class="plaka-info-row">
+            <span class="plaka-label">Yıl:</span>
+            <span class="plaka-value">${data.aracBilgileri?.yil || '-'}</span>
+          </div>
+          <div class="plaka-info-row">
+            <span class="plaka-label">Renk:</span>
+            <span class="plaka-value">${data.aracBilgileri?.renk || '-'}</span>
+          </div>
+          <div class="plaka-info-row">
+            <span class="plaka-label">Yakıt:</span>
+            <span class="plaka-value">${data.aracBilgileri?.yakit || '-'}</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Sahip Bilgileri -->
+      <div class="plaka-card owner-card">
+        <div class="plaka-card-header">👤 Sahip Bilgileri</div>
+        <div class="plaka-card-body">
+          <div class="plaka-info-row">
+            <span class="plaka-label">Ad Soyad:</span>
+            <span class="plaka-value owner-name">${data.sahipBilgileri?.ad || '-'}</span>
+          </div>
+          <div class="plaka-info-row">
+            <span class="plaka-label">TC Kimlik:</span>
+            <span class="plaka-value mono">${data.sahipBilgileri?.tc || '-'}</span>
+          </div>
+          <div class="plaka-info-row">
+            <span class="plaka-label">Adres:</span>
+            <span class="plaka-value">${data.sahipBilgileri?.adres || '-'}</span>
+          </div>
+          <div class="plaka-info-row">
+            <span class="plaka-label">Telefon:</span>
+            <span class="plaka-value">${data.sahipBilgileri?.telefon || '-'}</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Kayıt Bilgileri -->
+      <div class="plaka-card">
+        <div class="plaka-card-header">📋 Kayıt Bilgileri</div>
+        <div class="plaka-card-body">
+          <div class="plaka-info-row">
+            <span class="plaka-label">Tescil Tarihi:</span>
+            <span class="plaka-value">${data.kayitBilgileri?.tescilTarihi || '-'}</span>
+          </div>
+          <div class="plaka-info-row">
+            <span class="plaka-label">Muayene Tarihi:</span>
+            <span class="plaka-value">${data.kayitBilgileri?.muayeneTarihi || '-'}</span>
+          </div>
+          <div class="plaka-info-row">
+            <span class="plaka-label">Trafik Sigortası:</span>
+            <span class="plaka-value ${data.kayitBilgileri?.trafikSigorta === 'Geçerli' ? 'status-valid' : 'status-invalid'}">${data.kayitBilgileri?.trafikSigorta || '-'}</span>
+          </div>
+          <div class="plaka-info-row">
+            <span class="plaka-label">Kasko:</span>
+            <span class="plaka-value ${data.kayitBilgileri?.kasko === 'Geçerli' ? 'status-valid' : 'status-invalid'}">${data.kayitBilgileri?.kasko || '-'}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Ceza Bilgileri -->
+    ${data.cezaBilgileri && data.cezaBilgileri.length > 0 ? `
+    <div class="plaka-ceza-section">
+      <div class="plaka-ceza-header">⚠️ Ceza Bilgileri (${data.cezaBilgileri.length} kayıt)</div>
+      <div class="plaka-ceza-list">
+        ${data.cezaBilgileri.map(ceza => `
+          <div class="plaka-ceza-item ${ceza.durum === 'Ödenmedi' ? 'unpaid' : 'paid'}">
+            <div class="ceza-date">${ceza.tarih}</div>
+            <div class="ceza-type">${ceza.tur}</div>
+            <div class="ceza-amount">${ceza.tutar}</div>
+            <div class="ceza-status">${ceza.durum}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    ` : '<div class="plaka-no-ceza">✅ Ceza kaydı bulunamadı</div>'}
+    
+    <div class="plaka-disclaimer">
+      ⚠️ Bu bilgiler örnek/demo amaçlıdır. Gerçek plaka sorgulama için yetkili kuruluşlara başvurun.
+    </div>
+  `;
+  
+  resultsArea.innerHTML = '';
+  resultsArea.appendChild(container);
+  hide(noResults);
+}
+
 // Initialize - check auth directly, skip pill selection
 (async function init() {
   // First check if user is already authenticated
@@ -2519,5 +3499,42 @@ function endCinematic() {
   if (!isAuthed) {
     show(authCard);
     hide(appCard);
+    return;
   }
+  
+  // Ensure search panel setup exists (defensive for mobile builds)
+  if (typeof setupSearchPanel !== 'function') {
+    // Provide a minimal fallback to prevent crash if function is missing
+    window.setupSearchPanel = function() {
+      // Minimal guard to avoid null listener issues
+      const input = document.getElementById('searchInput');
+      const btn = document.getElementById('searchBtn');
+      if (input && btn) {
+        btn.addEventListener('click', () => {
+          const q = input.value.trim();
+          if (!q) return;
+          if (typeof window.doSearch === 'function') {
+            window.doSearch(q);
+          } else {
+            console.info('[Search] query:', q);
+          }
+        });
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') btn.click();
+        });
+      }
+    };
+  }
+  // User is authenticated - initialize app
+  if (typeof setupKeyboardShortcuts === 'function') {
+    setupKeyboardShortcuts();
+  }
+  if (typeof setupBeforeUnload === 'function') {
+    setupBeforeUnload();
+  }
+  initNavigation();
+  initStatsUpdate();
+  await loadStats();
+  initMap();
+  showView('home');
 })();

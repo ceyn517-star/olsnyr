@@ -585,10 +585,13 @@
 
         // Load dashboard stats
         async function loadDashboard() {
+            console.log('[Admin] Dashboard yükleniyor...');
             try {
                 // Stats
                 const statsRes = await fetch(`${API_URL}/api/stats`);
+                if (!statsRes.ok) throw new Error(`Stats API hatası: ${statsRes.status}`);
                 const stats = await statsRes.json();
+                console.log('[Admin] Stats:', stats);
                 document.getElementById('txtRecords').textContent = stats.txt_records || 0;
                 document.getElementById('sqlFiles').textContent = Object.keys(stats.sql_tables || {}).length;
 
@@ -597,7 +600,9 @@
                     headers: adminHeaders(),
                     credentials: 'same-origin'
                 });
+                if (!visitorsRes.ok) throw new Error(`Visitors API hatası: ${visitorsRes.status}`);
                 const visitors = await visitorsRes.json();
+                console.log('[Admin] Visitors:', visitors.count);
                 document.getElementById('totalVisitors').textContent = visitors.count || 0;
 
                 // Emails
@@ -605,9 +610,12 @@
                     headers: adminHeaders(),
                     credentials: 'same-origin'
                 });
+                if (!emailsRes.ok) throw new Error(`Emails API hatası: ${emailsRes.status}`);
                 const emails = await emailsRes.json();
+                console.log('[Admin] Emails:', emails.count);
                 document.getElementById('emailCount').textContent = emails.count || 0;
             } catch (err) {
+                console.error('[Admin] Dashboard hatası:', err);
                 console.error('Dashboard yüklenirken hata:', err);
             }
         }
@@ -1026,10 +1034,13 @@
             const pageInfo = document.getElementById('guildAdminPageInfo');
             const currentPage = Math.floor(guildAdminState.offset / guildAdminState.limit) + 1;
             const totalPages = Math.max(1, Math.ceil((guildAdminState.total || 0) / guildAdminState.limit));
-            meta.textContent = `Toplam ${guildAdminState.total || 0} kayıt • Sayfa ${currentPage}/${totalPages}`;
-            pageInfo.textContent = `Sayfa ${currentPage} / ${totalPages}`;
-            document.querySelectorAll('.pagination-controls button')[0].disabled = guildAdminState.offset === 0;
-            document.querySelectorAll('.pagination-controls button')[2].disabled = guildAdminState.offset + guildAdminState.limit >= guildAdminState.total;
+            if (meta) meta.textContent = `Toplam ${guildAdminState.total || 0} kayıt • Sayfa ${currentPage}/${totalPages}`;
+            if (pageInfo) pageInfo.textContent = `Sayfa ${currentPage} / ${totalPages}`;
+            const paginationButtons = document.querySelectorAll('.pagination-controls button');
+            if (paginationButtons.length >= 3) {
+                paginationButtons[0].disabled = guildAdminState.offset === 0;
+                paginationButtons[2].disabled = guildAdminState.offset + guildAdminState.limit >= guildAdminState.total;
+            }
         }
 
         function renderGuildAdminTable(rows) {

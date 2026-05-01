@@ -1,4 +1,4 @@
-buimport fs from 'node:fs';
+import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,19 @@ import session from 'express-session';
 import FileStore from 'session-file-store';
 import geoip from 'geoip-lite';
 import axios from 'axios';
+
+// CORS Middleware for Railway deployment
+const corsMiddleware = (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+  } else {
+    next();
+  }
+};
 
 const FileStoreSession = FileStore(session);
 
@@ -322,8 +335,8 @@ async function downloadDataFiles() {
 
 detectDataSources();
 
-const APP_PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
-const APP_HOST = process.env.HOST ?? (process.env.RAILWAY_ENVIRONMENT ? '0.0.0.0' : '127.0.0.1');
+const APP_PORT = process.env.PORT ? Number(process.env.PORT) : (process.env.RAILWAY_ENVIRONMENT ? 3000 : 3000);
+const APP_HOST = process.env.RAILWAY_ENVIRONMENT ? '0.0.0.0' : (process.env.HOST || '127.0.0.1');
 const SITE_PASSWORD = process.env.ZAGROS_PASSWORD ?? 'zagros31ceyn';
 const FINDCORD_API_KEY = '1fb785c3eb8069ba341836e0b25dabb4b20e439b4bce300123da1f791f12a3ea';
 
@@ -967,6 +980,571 @@ async function getIpGeolocation(ip) {
     return null;
   } catch (error) {
     console.log(`[IP-API] Hata ${ip}:`, error.message);
+    return null;
+  }
+}
+
+// 🔍 Shodan InternetDB API - Ücretsiz IP tarama (key gerektirmez)
+async function getShodanInternetDB(ip) {
+  try {
+    if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return null;
+    const response = await axios.get(`https://internetdb.shodan.io/${ip}`, {
+      timeout: 5000
+    });
+    return {
+      source: 'Shodan',
+      ip: response.data.ip,
+      ports: response.data.ports || [],
+      tags: response.data.tags || [],
+      vulns: response.data.vulns || [],
+      hostnames: response.data.hostnames || [],
+      cpes: response.data.cpes || []
+    };
+  } catch (error) {
+    if (error.response?.status !== 404) {
+      console.log(`[Shodan] Hata ${ip}:`, error.message);
+    }
+    return null;
+  }
+}
+
+// 🔍 IPInfo API - IP detayları ve coğrafi konum
+async function getIPInfo(ip) {
+  try {
+    if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return null;
+    const token = process.env.IPINFO_TOKEN || '';
+    const url = token 
+      ? `https://ipinfo.io/${ip}/json?token=${token}`
+      : `https://ipinfo.io/${ip}/json`;
+    const response = await axios.get(url, { timeout: 5000 });
+    const [lat, lon] = (response.data.loc || '').split(',').map(Number);
+    return {
+      source: 'IPInfo',
+      ip: response.data.ip,
+      city: response.data.city,
+      region: response.data.region,
+      country: response.data.country,
+      country_name: response.data.country_name,
+      loc: response.data.loc,
+      lat,
+      lon,
+      org: response.data.org,
+      asn: response.data.asn,
+      asn_domain: response.data.asn?.domain,
+      company: response.data.company,
+      carrier: response.data.carrier,
+      privacy: response.data.privacy
+    };
+  } catch (error) {
+    console.log(`[IPInfo] Hata ${ip}:`, error.message);
+    return null;
+  }
+}
+
+// 🔍 IPGeolocation.io API
+async function getIPGeolocationIO(ip) {
+  try {
+    if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return null;
+    const apiKey = process.env.IPGEOLOCATION_API_KEY || '';
+    if (!apiKey) return null;
+    const response = await axios.get(`https://api.ipgeolocation.io/ipgeo?apiKey=${apiKey}&ip=${ip}`, {
+      timeout: 5000
+    });
+    return {
+      source: 'IPGeolocation.io',
+      ip: response.data.ip,
+      continent: response.data.continent_name,
+      country: response.data.country_name,
+      country_code: response.data.country_code2,
+      region: response.data.state_prov,
+      city: response.data.city,
+      district: response.data.district,
+      zip: response.data.zipcode,
+      lat: response.data.latitude,
+      lon: response.data.longitude,
+      isp: response.data.isp,
+      org: response.data.organization,
+      timezone: response.data.time_zone?.name,
+      threat: response.data.threat?.is_tor || response.data.threat?.is_proxy || false
+    };
+  } catch (error) {
+    console.log(`[IPGeolocation.io] Hata ${ip}:`, error.message);
+    return null;
+  }
+}
+
+// 🔍 Greynoise API - IP tehdit istihbaratı (Community ücretsiz)
+async function getGreynoise(ip) {
+  try {
+    if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return null;
+    // Community API - key gerektirmez, sadece Accept header
+    const response = await axios.get(`https://api.greynoise.io/v3/community/${ip}`, {
+      headers: { 
+        'Accept': 'application/json',
+        'User-Agent': 'Zagros-OSINT-Scanner/1.0'
+      },
+      timeout: 8000,
+      validateStatus: (status) => status < 500 // 404 bile başarılı sayılacak
+    });
+    
+    // 200 başarılı yanıt
+    if (response.status === 200 && response.data) {
+      return {
+        source: 'Greynoise',
+        ip: response.data.ip || ip,
+        noise: response.data.noise || false,
+        riot: response.data.riot || false,
+        classification: response.data.classification || 'benign',
+        name: response.data.name || null,
+        link: response.data.link || `https://www.greynoise.io/viz/ip/${ip}`,
+        last_seen: response.data.last_seen || null,
+        message: response.data.message || 'IP observed'
+      };
+    }
+    
+    // 404 = IP not observed (noise değil, bu normal)
+    if (response.status === 404) {
+      return {
+        source: 'Greynoise',
+        ip: ip,
+        noise: false,
+        riot: false,
+        classification: 'unknown',
+        message: 'IP not observed (no malicious activity detected)',
+        link: `https://www.greynoise.io/viz/ip/${ip}`
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    // 404 = noise değil, normal bir durum
+    if (error.response?.status === 404) {
+      return {
+        source: 'Greynoise',
+        ip: ip,
+        noise: false,
+        riot: false,
+        classification: 'unknown',
+        message: 'IP not observed (no malicious activity)',
+        link: `https://www.greynoise.io/viz/ip/${ip}`
+      };
+    }
+    if (error.code === 'ECONNABORTED') {
+      console.log(`[Greynoise] Timeout ${ip}`);
+    } else {
+      console.log(`[Greynoise] Hata ${ip}:`, error.message);
+    }
+    return null;
+  }
+}
+
+// 🔍 IPQualityScore API - IP reputation ve fraud detection (ücretsiz tier)
+async function getIPQualityScore(ip) {
+  try {
+    if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return null;
+    const apiKey = process.env.IPQUALITYSCORE_API_KEY || '';
+    // API key yoksa bile bazı temel bilgileri döndür
+    if (!apiKey) {
+      return {
+        source: 'IPQualityScore',
+        ip: ip,
+        note: 'API key required for detailed report',
+        check_url: `https://www.ipqualityscore.com/free-ip-lookup-proxy-vpn-test/lookup/${ip}`
+      };
+    }
+    
+    const response = await axios.get(`https://www.ipqualityscore.com/api/json/ip/${apiKey}/${ip}`, {
+      timeout: 5000
+    });
+    
+    if (response.data) {
+      return {
+        source: 'IPQualityScore',
+        ip: ip,
+        fraud_score: response.data.fraud_score,
+        country_code: response.data.country_code,
+        region: response.data.region,
+        city: response.data.city,
+        isp: response.data.ISP,
+        organization: response.data.organization,
+        is_proxy: response.data.proxy,
+        is_vpn: response.data.vpn,
+        is_tor: response.data.tor,
+        is_datacenter: response.data.datacenter,
+        recent_abuse: response.data.recent_abuse,
+        bot_status: response.data.bot_status,
+        check_url: `https://www.ipqualityscore.com/free-ip-lookup-proxy-vpn-test/lookup/${ip}`
+      };
+    }
+    return null;
+  } catch (error) {
+    console.log(`[IPQualityScore] Hata ${ip}:`, error.message);
+    return null;
+  }
+}
+
+// 🔍 ViewDNS.info API - IP reverse lookup (ücretsiz)
+async function getViewDNSInfo(ip) {
+  try {
+    if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return null;
+    // Rate limiting için simple cache
+    const response = await axios.get(`https://api.viewdns.info/reverseip/`, {
+      params: {
+        host: ip,
+        apikey: process.env.VIEWDNS_API_KEY || 'demo', // demo key ile sınırlı kullanım
+        output: 'json'
+      },
+      timeout: 5000
+    });
+    
+    if (response.data && response.data.response) {
+      const domains = response.data.response.domains || [];
+      return {
+        source: 'ViewDNS',
+        ip: ip,
+        domain_count: domains.length,
+        domains: domains.slice(0, 10), // ilk 10 domain
+        check_url: `https://viewdns.info/reverseip/?host=${ip}&t=1`
+      };
+    }
+    return null;
+  } catch (error) {
+    // Ücretsiz API key olmadan sadece URL döndür
+    return {
+      source: 'ViewDNS',
+      ip: ip,
+      check_url: `https://viewdns.info/reverseip/?host=${ip}&t=1`,
+      note: 'Visit URL for reverse DNS lookup'
+    };
+  }
+}
+
+// 🔍 IP-API.com - Ücretsiz IP geolocation (düzeltme)
+async function getIPApiCom(ip) {
+  try {
+    if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return null;
+    const response = await axios.get(`http://ip-api.com/json/${ip}?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,district,zip,lat,lon,timezone,offset,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query`, {
+      timeout: 5000
+    });
+    if (response.data && response.data.status === 'success') {
+      return {
+        source: 'IP-API.com',
+        ip: response.data.query,
+        continent: response.data.continent,
+        continentCode: response.data.continentCode,
+        country: response.data.country,
+        countryCode: response.data.countryCode,
+        region: response.data.regionName,
+        regionCode: response.data.region,
+        city: response.data.city,
+        district: response.data.district,
+        zip: response.data.zip,
+        lat: response.data.lat,
+        lon: response.data.lon,
+        timezone: response.data.timezone,
+        offset: response.data.offset,
+        currency: response.data.currency,
+        isp: response.data.isp,
+        org: response.data.org,
+        as: response.data.as,
+        asname: response.data.asname,
+        reverse: response.data.reverse,
+        mobile: response.data.mobile,
+        proxy: response.data.proxy,
+        hosting: response.data.hosting
+      };
+    }
+    return null;
+  } catch (error) {
+    console.log(`[IP-API.com] Hata ${ip}:`, error.message);
+    return null;
+  }
+}
+
+// 🔍 AbuseIPDB API - IP kötüye kullanım kontrolü (API key gerektirir)
+async function getAbuseIPDB(ip) {
+  try {
+    if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return null;
+    const apiKey = process.env.ABUSEIPDB_API_KEY || '';
+    if (!apiKey) {
+      console.log(`[AbuseIPDB] API key yok, atlanıyor`);
+      return null;
+    }
+    const response = await axios.get(`https://api.abuseipdb.com/api/v2/check`, {
+      params: { ipAddress: ip, maxAgeInDays: 90, verbose: true },
+      headers: { 
+        'Key': apiKey,
+        'Accept': 'application/json'
+      },
+      timeout: 5000
+    });
+    if (response.data?.data) {
+      return {
+        source: 'AbuseIPDB',
+        ip: response.data.data.ipAddress,
+        is_public: response.data.data.isPublic,
+        ip_version: response.data.data.ipVersion,
+        is_whitelisted: response.data.data.isWhitelisted,
+        abuse_confidence: response.data.data.abuseConfidenceScore,
+        country: response.data.data.countryName,
+        country_code: response.data.data.countryCode,
+        usage_type: response.data.data.usageType,
+        isp: response.data.data.isp,
+        domain: response.data.data.domain,
+        hostnames: response.data.data.hostnames,
+        is_tor: response.data.data.isTor,
+        total_reports: response.data.data.totalReports,
+        num_distinct_users: response.data.data.numDistinctUsers,
+        last_reported_at: response.data.data.lastReportedAt
+      };
+    }
+    return null;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      console.log(`[AbuseIPDB] API key geçersiz veya eksik`);
+    } else {
+      console.log(`[AbuseIPDB] Hata ${ip}:`, error.message);
+    }
+    return null;
+  }
+}
+
+// 🔍 VirusTotal API - IP reputation (API key gerektirir)
+async function getVirusTotalIP(ip) {
+  try {
+    if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return null;
+    const apiKey = process.env.VIRUSTOTAL_API_KEY || '';
+    if (!apiKey) {
+      console.log(`[VirusTotal] API key yok, atlanıyor`);
+      return null;
+    }
+    const response = await axios.get(`https://www.virustotal.com/api/v3/ip_addresses/${ip}`, {
+      headers: { 
+        'x-apikey': apiKey,
+        'Accept': 'application/json'
+      },
+      timeout: 5000
+    });
+    if (response.data?.data) {
+      const attrs = response.data.data.attributes;
+      return {
+        source: 'VirusTotal',
+        ip: ip,
+        reputation: attrs.reputation,
+        harmless: attrs.last_analysis_stats?.harmless || 0,
+        malicious: attrs.last_analysis_stats?.malicious || 0,
+        suspicious: attrs.last_analysis_stats?.suspicious || 0,
+        undetected: attrs.last_analysis_stats?.undetected || 0,
+        total_engines: (attrs.last_analysis_stats?.harmless || 0) + 
+                       (attrs.last_analysis_stats?.malicious || 0) + 
+                       (attrs.last_analysis_stats?.suspicious || 0) + 
+                       (attrs.last_analysis_stats?.undetected || 0),
+        country: attrs.country,
+        as_owner: attrs.as_owner,
+        asn: attrs.asn,
+        regional_internet_registry: attrs.regional_internet_registry,
+        last_analysis_date: attrs.last_analysis_date,
+        tags: attrs.tags || []
+      };
+    }
+    return null;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      console.log(`[VirusTotal] API key geçersiz veya eksik`);
+    } else {
+      console.log(`[VirusTotal] Hata ${ip}:`, error.message);
+    }
+    return null;
+  }
+}
+
+// 🔍 DiscordLookup API - Discord ID detaylı bilgi
+async function getDiscordLookup(discordId) {
+  try {
+    if (!discordId || !/^\d{10,20}$/.test(discordId)) return null;
+    const response = await axios.get(`https://discordlookup.mesalytic.moe/v1/user/${discordId}`, {
+      timeout: 5000
+    });
+    return {
+      source: 'DiscordLookup',
+      id: response.data.id,
+      username: response.data.username,
+      display_name: response.data.display_name,
+      avatar_url: response.data.avatar_url,
+      banner_url: response.data.banner_url,
+      accent_color: response.data.accent_color,
+      created_at: response.data.created_at,
+      created_timestamp: response.data.created_timestamp,
+      badges: response.data.badges || [],
+      premium_type: response.data.premium_type,
+      premium_since: response.data.premium_since
+    };
+  } catch (error) {
+    console.log(`[DiscordLookup] Hata ${discordId}:`, error.message);
+    return null;
+  }
+}
+
+// 🔍 Discord.id API - Alternatif Discord ID lookup
+async function getDiscordIDInfo(discordId) {
+  try {
+    if (!discordId || !/^\d{10,20}$/.test(discordId)) return null;
+    const response = await axios.get(`https://discord.id/api/v1/users/${discordId}`, {
+      timeout: 5000
+    });
+    return {
+      source: 'Discord.id',
+      id: discordId,
+      username: response.data.username,
+      discriminator: response.data.discriminator,
+      avatar: response.data.avatar,
+      banner: response.data.banner,
+      accent_color: response.data.accent_color,
+      public_flags: response.data.public_flags,
+      flags: response.data.flags,
+      bot: response.data.bot,
+      system: response.data.system
+    };
+  } catch (error) {
+    console.log(`[Discord.id] Hata ${discordId}:`, error.message);
+    return null;
+  }
+}
+
+// 🔍 Hunter.io API - Email doğrulama ve bulma
+async function getHunterEmailInfo(email) {
+  try {
+    if (!email || !email.includes('@')) return null;
+    const apiKey = process.env.HUNTER_API_KEY || '';
+    if (!apiKey) return null;
+    
+    // Email verification
+    const verifyRes = await axios.get(`https://api.hunter.io/v2/email-verifier`, {
+      params: { email, api_key: apiKey },
+      timeout: 5000
+    });
+    
+    return {
+      source: 'Hunter.io',
+      email,
+      result: verifyRes.data.data?.result,
+      score: verifyRes.data.data?.score,
+      regexp: verifyRes.data.data?.regexp,
+      gibberish: verifyRes.data.data?.gibberish,
+      disposable: verifyRes.data.data?.disposable,
+      webmail: verifyRes.data.data?.webmail,
+      mx_records: verifyRes.data.data?.mx_records,
+      smtp_server: verifyRes.data.data?.smtp_server,
+      smtp_check: verifyRes.data.data?.smtp_check,
+      accept_all: verifyRes.data.data?.accept_all,
+      block: verifyRes.data.data?.block,
+      sources: verifyRes.data.data?.sources?.length || 0
+    };
+  } catch (error) {
+    console.log(`[Hunter.io] Hata ${email}:`, error.message);
+    return null;
+  }
+}
+
+// 🔍 Hunter.io Domain Search - Email bulma
+async function searchHunterDomain(domain) {
+  try {
+    if (!domain || !domain.includes('.')) return null;
+    const apiKey = process.env.HUNTER_API_KEY || '';
+    if (!apiKey) return null;
+    
+    const response = await axios.get(`https://api.hunter.io/v2/domain-search`, {
+      params: { domain, api_key: apiKey, limit: 10 },
+      timeout: 5000
+    });
+    
+    return {
+      source: 'Hunter.io Domain',
+      domain: response.data.data?.domain,
+      disposable: response.data.data?.disposable,
+      webmail: response.data.data?.webmail,
+      accept_all: response.data.data?.accept_all,
+      organization: response.data.data?.organization,
+      emails: response.data.data?.emails?.map(e => ({
+        email: e.value,
+        type: e.type,
+        confidence: e.confidence,
+        first_name: e.first_name,
+        last_name: e.last_name,
+        position: e.position,
+        seniority: e.seniority,
+        department: e.department,
+        linkedin: e.linkedin,
+        twitter: e.twitter,
+        phone_number: e.phone_number
+      })) || []
+    };
+  } catch (error) {
+    console.log(`[Hunter.io Domain] Hata ${domain}:`, error.message);
+    return null;
+  }
+}
+
+// 🔍 LeakCheck API - Email sızıntı kontrolü
+async function checkLeakCheck(email) {
+  try {
+    if (!email || !email.includes('@')) return null;
+    const apiKey = process.env.LEAKCHECK_API_KEY || '';
+    if (!apiKey) return null;
+    
+    const response = await axios.get(`https://leakcheck.io/api/v2/query`, {
+      params: { email, type: 'email' },
+      headers: { 'X-API-Key': apiKey },
+      timeout: 5000
+    });
+    
+    if (response.data.success && response.data.found > 0) {
+      return {
+        source: 'LeakCheck',
+        email,
+        found: response.data.found,
+        breaches: response.data.result?.map(r => ({
+          name: r.name,
+          date: r.date,
+          source: r.source,
+          email: r.email,
+          password: r.password ? '***' : null,
+          hash: r.hash
+        })) || []
+      };
+    }
+    return { source: 'LeakCheck', email, found: 0, breaches: [] };
+  } catch (error) {
+    console.log(`[LeakCheck] Hata ${email}:`, error.message);
+    return null;
+  }
+}
+
+// 🔍 Intelligence X Email Search
+async function searchIntelligenceXEmail(email) {
+  try {
+    if (!email || !email.includes('@')) return null;
+    const apiKey = process.env.INTELX_API_KEY || '';
+    if (!apiKey) return null;
+    
+    const response = await axios.get(`https://2.intelx.io/privacy-api/search`, {
+      params: { term: email, maxresults: 20 },
+      headers: { 'x-key': apiKey },
+      timeout: 5000
+    });
+    
+    return {
+      source: 'Intelligence X',
+      email,
+      results: response.data?.records?.map(r => ({
+        date: r.date,
+        system: r.system,
+        type: r.type,
+        source: r.source
+      })) || []
+    };
+  } catch (error) {
+    console.log(`[IntelligenceX] Hata ${email}:`, error.message);
     return null;
   }
 }
@@ -1640,6 +2218,62 @@ function normalizeFindCordData(userId, data) {
   const global_name = ui.UserGlobalName || ui.global_name || ui.user_global_name || ui.GlobalName || 
                       ui.globalName || data.global_name || data.GlobalName || null;
 
+  // Tüm Discord verilerini topla
+  const raw = data;
+  
+  // Sunucu (Guild) verilerini normalize et - icon ve bannerları da dahil et
+  let guilds = [];
+  const rawGuilds = raw.Guilds || raw.guilds || raw.Servers || raw.servers || [];
+  if (Array.isArray(rawGuilds)) {
+    guilds = rawGuilds.map(g => {
+      const guildId = g.id || g.Id || g.guild_id || g.GuildId || g.GuildID || '';
+      const iconHash = g.icon || g.Icon || g.guild_icon || g.GuildIcon || null;
+      const bannerHash = g.banner || g.Banner || g.guild_banner || g.GuildBanner || null;
+      
+      // Icon URL oluştur
+      let iconUrl = null;
+      if (iconHash) {
+        const ext = iconHash.startsWith('a_') ? 'gif' : 'png';
+        iconUrl = `https://cdn.discordapp.com/icons/${guildId}/${iconHash}.${ext}?size=128`;
+      }
+      
+      // Banner URL oluştur
+      let bannerUrl = null;
+      if (bannerHash) {
+        const ext = bannerHash.startsWith('a_') ? 'gif' : 'png';
+        bannerUrl = `https://cdn.discordapp.com/banners/${guildId}/${bannerHash}.${ext}?size=512`;
+      }
+      
+      // Sunucudaki kullanıcı bilgileri
+      const nickname = g.nick || g.Nick || g.nickname || g.Nickname || g.user_nick || g.UserNick || null;
+      const isOwner = g.owner || g.Owner || g.is_owner || g.IsOwner || false;
+      const perms = g.permissions || g.Permissions || 0;
+      // Discord yetkilerini kontrol et
+      const isAdmin = isOwner || (perms & 0x8) === 0x8; // ADMINISTRATOR
+      const isMod = (perms & 0x2000) === 0x2000; // KICK_MEMBERS
+      
+      return {
+        id: guildId,
+        name: g.name || g.Name || g.guild_name || g.GuildName || 'Bilinmeyen Sunucu',
+        icon: iconUrl,
+        icon_hash: iconHash,
+        banner: bannerUrl,
+        banner_hash: bannerHash,
+        owner: isOwner,
+        admin: isAdmin,
+        moderator: isMod,
+        permissions: perms,
+        join_time: g.join_time || g.JoinTime || g.joined_at || g.JoinedAt || null,
+        booster: g.booster || g.Booster || g.is_booster || g.IsBooster || false,
+        position: g.position || g.Position || 0,
+        nickname: nickname, // Sunucudaki özel isim
+        user_name: username, // Genel Discord kullanıcı adı
+        global_name: global_name // Global display name
+      };
+    });
+  }
+  
+  // Tüm Discord verilerini normalize et
   const normalized = {
     id: userId,
     username,
@@ -1652,7 +2286,30 @@ function normalizeFindCordData(userId, data) {
     badges: Array.isArray(ui.UserBadge || ui.user_badge || ui.Badges) ? 
             (ui.UserBadge || ui.user_badge || ui.Badges) : 
             (data.badges || data.Badges || []),
-    guilds: data.Guilds || data.guilds || data.Guild || data.guild || [],
+    guilds: guilds,
+    // Ek Discord verileri
+    connections: raw.Connections || raw.connections || raw.LinkedAccounts || raw.linked_accounts || [],
+    activities: raw.Activities || raw.activities || raw.Games || raw.games || [],
+    platform: raw.Platform || raw.platform || null,
+    nitro: raw.Nitro || raw.nitro || raw.IsNitro || raw.is_nitro || false,
+    nitro_type: raw.NitroType || raw.nitro_type || null,
+    phone: raw.Phone || raw.phone || raw.PhoneNumber || raw.phone_number || null,
+    nsfw_allowed: raw.NsfwAllowed || raw.nsfw_allowed || null,
+    mfa_enabled: raw.MfaEnabled || raw.mfa_enabled || raw.TwoFA || raw.two_fa || false,
+    verified: raw.Verified || raw.verified || raw.IsVerified || raw.is_verified || false,
+    email_verified: raw.EmailVerified || raw.email_verified || null,
+    created_at: raw.CreatedAt || raw.created_at || raw.AccountCreated || raw.account_created || null,
+    locale: raw.Locale || raw.locale || null,
+    flags: raw.Flags || raw.flags || raw.PublicFlags || raw.public_flags || 0,
+    // Arkadaş ve mesaj verileri
+    top_friends: raw.TopFriends || raw.top_friends || raw.CloseFriends || raw.close_friends || [],
+    voice_friends: raw.VoiceFriends || raw.voice_friends || raw.VoiceActivity || raw.voice_activity || [],
+    recent_messages: raw.RecentMessages || raw.recent_messages || raw.Messages || raw.messages || [],
+    display_names: raw.DisplayNames || raw.display_names || raw.Usernames || raw.usernames || [],
+    // Kişisel bilgiler
+    top_name: raw.TopName || raw.top_name || raw.RealName || raw.real_name || null,
+    top_age: raw.TopAge || raw.top_age || raw.Age || raw.age || null,
+    top_sex: raw.TopSex || raw.top_sex || raw.Sex || raw.sex || raw.Gender || raw.gender || null,
     raw: data
   };
 
@@ -2867,7 +3524,10 @@ async function scanSqlFileForDiscordId(sqlPath, discordId, maxHits = 50) {
       }
 
       matches.push({
+        discord_id: discordId,
+        email: email,
         email_masked: maskEmail(email),
+        ip: ip,
         ip_masked: maskIp(ip),
         connections_apps,
         username,
@@ -2875,7 +3535,8 @@ async function scanSqlFileForDiscordId(sqlPath, discordId, maxHits = 50) {
         avatar_hash,
         bio,
         premium,
-        verified
+        verified,
+        source: path.basename(sqlPath)
       });
 
       if (matches.length >= maxHits) break;
@@ -2895,31 +3556,60 @@ const isProduction = process.env.NODE_ENV === 'production' || !!process.env.RAIL
 const app = express();
 app.disable('x-powered-by');
 
-// 🌐 CORS - zagros.one ve diğer izinli origin'ler
+// 🌐 CORS - Railway deployment için
+app.use(corsMiddleware);
+
+// 🌐 CORS - Herkese Açık Site Ayarları
 const ALLOWED_ORIGINS = [
   'https://zagros.one',
   'https://www.zagros.one',
   'http://zagros.one',
   'http://localhost:3000',
-  'http://127.0.0.1:3000'
+  'http://127.0.0.1:3000',
+  // Deployment platformları için wildcard desteği
+  'https://*.vercel.app',
+  'https://*.netlify.app',
+  'https://*.railway.app',
+  'https://*.render.com',
+  'https://*.herokuapp.com'
 ];
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  // zagros.one veya izinli origin'lere izin ver
-  if (origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith('.zagros.one'))) {
-    res.header('Access-Control-Allow-Origin', origin);
-  } else if (!origin) {
-    // Same-origin istekler (tarayıcı direkt istek)
+  
+  // 🌍 Herkese açık site - tüm origin'lere izin ver
+  if (!origin) {
     res.header('Access-Control-Allow-Origin', '*');
   } else {
-    // Diğer origin'ler - geliştirme ortamında izin ver
-    res.header('Access-Control-Allow-Origin', isProduction ? 'https://zagros.one' : (origin || '*'));
+    // İzinli origin'ler kontrolü
+    const isAllowed = ALLOWED_ORIGINS.some(allowed => {
+      if (allowed.includes('*')) {
+        const regex = new RegExp(allowed.replace('*', '.*'));
+        return regex.test(origin);
+      }
+      return allowed === origin;
+    });
+    
+    // Production'da sadece izinli origin'ler, development'ta tümü
+    if (isAllowed || !isProduction) {
+      res.header('Access-Control-Allow-Origin', origin);
+    } else {
+      res.header('Access-Control-Allow-Origin', 'https://zagros.one');
+    }
   }
+  
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Token');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-Token, X-Requested-With');
   res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400'); // 24 saat cache
   res.header('Vary', 'Origin');
+  
+  // 🔒 Güvenlik Header'ları
+  res.header('X-Content-Type-Options', 'nosniff');
+  res.header('X-Frame-Options', 'DENY');
+  res.header('X-XSS-Protection', '1; mode=block');
+  res.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
@@ -2931,25 +3621,101 @@ app.get('/api/search-all', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'invalid_discord_id' });
   }
   await ensureSqlLoaded();
-  let txtMatches = [];
-  let sqlMatches = [];
-  let dbResults = [];
-  // FindCord data for this id
-  let fc = null;
-  if (isDBReady()) {
-    try {
-      dbResults = await dbSearchByDiscordId(discordId);
-    } catch { dbResults = []; }
-  } else {
-    try {
-      txtMatches = await searchTxtByDiscordId(discordId);
-    } catch { txtMatches = []; }
-    try {
-      const lists = await Promise.all(SQL_PATHS.map(p => scanSqlFileForDiscordId(p, discordId)));
-      sqlMatches = lists.flat();
-    } catch { sqlMatches = []; }
+  
+  // 1. FindCord API'den veri çek
+  let fcRaw = null;
+  let fcData = null;
+  try {
+    fcRaw = await getFindCordData(discordId);
+    if (fcRaw) {
+      fcData = normalizeFindCordData(discordId, fcRaw);
+      console.log(`[FindCord] Veri alındı: ${discordId}`);
+    }
+  } catch (err) {
+    console.log(`[FindCord] Hata: ${err.message}`);
   }
-  res.json({ ok: true, results: { discord_id: discordId, db: dbResults, txt: txtMatches, sql: sqlMatches } });
+  
+  // 2. SQL dosyalarından veri çek
+  let sqlMatches = [];
+  try {
+    const lists = await Promise.all(SQL_PATHS.map(p => scanSqlFileForDiscordId(p, discordId)));
+    sqlMatches = lists.flat();
+    console.log(`[SQL] ${sqlMatches.length} sonuç bulundu: ${discordId}`);
+  } catch (err) {
+    console.log(`[SQL] Hata: ${err.message}`);
+  }
+  
+  // 3. TXT dosyasından veri çek
+  let txtMatches = [];
+  try {
+    txtMatches = await searchTxtByDiscordId(discordId);
+  } catch { /* ignore */ }
+  
+  // 4. Tüm verileri birleştir
+  // Önce SQL verilerinden ilk kaydı al
+  const sqlData = sqlMatches[0] || {};
+  console.log(`[SQL] Birleştirme: ${sqlMatches.length} sonuç, ilk kayıt:`, JSON.stringify(sqlData).slice(0, 200));
+  
+  // Birleştirilmiş kullanıcı objesi oluştur
+  const mergedUser = {
+    discord_id: discordId,
+    // FindCord verileri (öncelikli) - normalizeFindCordData'dan gelen zenginleştirilmiş veriler
+    username: fcData?.username || sqlData?.username || null,
+    global_name: fcData?.global_name || null,
+    avatar_url: fcData?.avatar_url || null,
+    banner_url: fcData?.banner_url || null,
+    bio: fcData?.bio || sqlData?.bio || null,
+    pronouns: fcData?.pronouns || null,
+    badges: fcData?.badges || [],
+    presence: fcData?.presence || null,
+    // Sunucular - normalizeFindCordData'dan gelen zenginleştirilmiş guild verileri
+    guilds: fcData?.guilds || [],
+    // FindCord ekstra verileri - yeni normalize edilmiş alanlar
+    findcord_servers: fcData?.guilds || [],
+    findcord_voice_friends: fcData?.voice_friends || [],
+    findcord_recent_messages: fcData?.recent_messages || [],
+    findcord_display_names: fcData?.display_names || [],
+    findcord_top_name: fcData?.top_name || null,
+    findcord_top_age: fcData?.top_age || null,
+    findcord_top_sex: fcData?.top_sex || null,
+    findcord_created: fcData?.created_at || null,
+    // Ek Discord verileri
+    connections: fcData?.connections || [],
+    activities: fcData?.activities || [],
+    platform: fcData?.platform || null,
+    nitro: fcData?.nitro || false,
+    verified: fcData?.verified || false,
+    flags: fcData?.flags || 0,
+    // SQL verileri
+    email: sqlData?.email || null,
+    email_masked: sqlData?.email_masked || null,
+    ip: sqlData?.ip || null,
+    ip_masked: sqlData?.ip_masked || null,
+    connections_apps: sqlData?.connections_apps || [],
+    // Meta
+    findcord_enriched: !!fcData,
+    sql_matches_count: sqlMatches.length,
+    sources: sqlMatches.map(m => m.source).filter((v, i, a) => a.indexOf(v) === i)
+  };
+  
+  // Eğer hiç veri yoksa not_found döndür
+  if (!fcData && sqlMatches.length === 0 && txtMatches.length === 0) {
+    return res.json({ ok: true, found: false, discord_id: discordId, message: 'Veri bulunamadı' });
+  }
+  
+  res.json({ 
+    ok: true, 
+    found: true,
+    discord_id: discordId,
+    user: {
+      ...mergedUser,
+      findcord_raw: fcRaw
+    },
+    sql_matches: sqlMatches,
+    txt_matches: txtMatches,
+    total_sql_matches: sqlMatches.length,
+    total_txt_matches: txtMatches.length
+  });
 });
 
 app.use(express.json({ limit: '1mb' }));
@@ -3907,9 +4673,15 @@ app.get('/api/search', async (req, res) => {
 
   let allRaw = [];
   let findCordData = null;
+  let discordLookupData = null;
+  let discordIdData = null;
   
-  // Her zaman FindCord'dan veri çek (tutarlılık için)
-  findCordData = await getFindCordData(discordId);
+  // Discord OSINT API'lerini paralel çağır
+  [findCordData, discordLookupData, discordIdData] = await Promise.all([
+    getFindCordData(discordId),
+    getDiscordLookup(discordId),
+    getDiscordIDInfo(discordId)
+  ]);
   
   if (isDBReady()) {
     // DB modu - PostgreSQL'den sorgula
@@ -3987,8 +4759,38 @@ app.get('/api/search', async (req, res) => {
   const ipForGeo = merged.ip || merged.last_ip || merged.registration_ip;
   if (ipForGeo) merged.ip_location = getIpLocation(ipForGeo);
 
+  // DiscordLookup API verilerini birleştir
+  if (discordLookupData) {
+    if (discordLookupData.username && !merged.username) merged.username = discordLookupData.username;
+    if (discordLookupData.display_name && !merged.global_name) merged.global_name = discordLookupData.display_name;
+    if (discordLookupData.avatar_url && !merged.avatar_url) merged.avatar_url = discordLookupData.avatar_url;
+    if (discordLookupData.banner_url && !merged.banner_url) merged.banner_url = discordLookupData.banner_url;
+    if (discordLookupData.accent_color) merged.accent_color = discordLookupData.accent_color;
+    if (discordLookupData.badges?.length > 0) merged.badges = discordLookupData.badges;
+    if (discordLookupData.premium_type) merged.premium_type = discordLookupData.premium_type;
+  }
+  
+  // Discord.id API verilerini birleştir
+  if (discordIdData) {
+    if (discordIdData.username && !merged.username) merged.username = discordIdData.username;
+    if (discordIdData.discriminator && !merged.discriminator) merged.discriminator = discordIdData.discriminator;
+    if (discordIdData.avatar && !merged.avatar_hash) merged.avatar_hash = discordIdData.avatar;
+    if (discordIdData.banner && !merged.banner_url) merged.banner_url = `https://cdn.discordapp.com/banners/${discordId}/${discordIdData.banner}.png?size=512`;
+    if (discordIdData.accent_color) merged.accent_color = discordIdData.accent_color;
+    if (discordIdData.public_flags) merged.public_flags = discordIdData.public_flags;
+    if (discordIdData.bot) merged.is_bot = discordIdData.bot;
+    if (discordIdData.system) merged.is_system = discordIdData.system;
+  }
+  
   // Kaynak her zaman Zagros
   merged.sources = ['Zagros'];
+  
+  // API kaynaklarını ekle
+  const apiSources = [];
+  if (findCordData) apiSources.push('FindCord');
+  if (discordLookupData) apiSources.push('DiscordLookup');
+  if (discordIdData) apiSources.push('Discord.id');
+  if (apiSources.length > 0) merged.api_sources = apiSources;
 
   // Potansiyel arkadaşları bul (aynı IP veya guild'den)
   const potentialFriends = [];
@@ -4667,13 +5469,45 @@ function getConnectionUrl(app, id, name) {
 }
 
 // Dış OSINT kaynakları - paralel çalışsın
-  const [githubResults, hibpBreaches, gravatarInfo, platformResults, emailrepInfo] = await Promise.all([
+  const [githubResults, hibpBreaches, gravatarInfo, platformResults, emailrepInfo, hunterInfo, leakCheckInfo, intelxInfo] = await Promise.all([
     searchGitHubByEmail(email),
     checkHaveIBeenPwned(email),
     getGravatarInfo(email),
     searchPlatformsByEmail(email),
-    checkEmailrep(email)
+    checkEmailrep(email),
+    getHunterEmailInfo(email),
+    checkLeakCheck(email),
+    searchIntelligenceXEmail(email)
   ]);
+  
+  // Yeni Email API sonuçlarını externalSources'a ekle
+  if (hunterInfo) {
+    externalSources.push({
+      source: 'Hunter.io',
+      ...hunterInfo,
+      result: hunterInfo.result,
+      score: hunterInfo.score,
+      disposable: hunterInfo.disposable,
+      webmail: hunterInfo.webmail,
+      mx_records: hunterInfo.mx_records,
+      smtp_check: hunterInfo.smtp_check
+    });
+  }
+  
+  if (leakCheckInfo && leakCheckInfo.found > 0) {
+    externalSources.push({
+      source: 'LeakCheck',
+      found: leakCheckInfo.found,
+      breaches: leakCheckInfo.breaches
+    });
+  }
+  
+  if (intelxInfo && intelxInfo.results?.length > 0) {
+    externalSources.push({
+      source: 'Intelligence X',
+      results: intelxInfo.results
+    });
+  }
 
   // Discord kayıtlarını birleştir (aynı ID'li olanları tekilleştir)
   const seenDiscordIds = new Map();
@@ -4822,48 +5656,125 @@ app.get('/api/search-ip', requireSubscription, async (req, res) => {
 
   const externalSources = [];
 
-  // AbuseIPDB API sorgusu
-  try {
-    const abuseRes = await axios.get(`https://api.abuseipdb.com/api/v2/check`, {
-      params: { ipAddress: ip, maxAgeInDays: 90 },
-      headers: { 'Key': process.env.ABUSEIPDB_API_KEY || '', 'Accept': 'application/json' },
-      timeout: 5000
-    });
-    if (abuseRes.data?.data) {
-      externalSources.push({
-        source: 'AbuseIPDB',
-        ip: abuseRes.data.data.ipAddress,
-        abuse_confidence: abuseRes.data.data.abuseConfidenceScore,
-        country_code: abuseRes.data.data.countryCode,
-        usage_type: abuseRes.data.data.usageType,
-        isp: abuseRes.data.data.isp,
-        domain: abuseRes.data.data.domain,
-        total_reports: abuseRes.data.data.totalReports,
-        last_reported_at: abuseRes.data.data.lastReportedAt
-      });
+  // 🔍 Tüm IP API'lerini paralel çalıştır
+  const apiResults = await Promise.allSettled([
+    // AbuseIPDB (API key gerekli)
+    (async () => {
+      if (!process.env.ABUSEIPDB_API_KEY) {
+        console.log(`[IP Search] AbuseIPDB: API key yok, atlanıyor`);
+        return null;
+      }
+      try {
+        const abuseRes = await axios.get(`https://api.abuseipdb.com/api/v2/check`, {
+          params: { ipAddress: ip, maxAgeInDays: 90, verbose: true },
+          headers: { 
+            'Key': process.env.ABUSEIPDB_API_KEY,
+            'Accept': 'application/json'
+          },
+          timeout: 5000
+        });
+        if (abuseRes.data?.data) {
+          return {
+            source: 'AbuseIPDB',
+            ip: abuseRes.data.data.ipAddress,
+            abuse_confidence: abuseRes.data.data.abuseConfidenceScore,
+            country_code: abuseRes.data.data.countryCode,
+            country: abuseRes.data.data.countryName,
+            usage_type: abuseRes.data.data.usageType,
+            isp: abuseRes.data.data.isp,
+            domain: abuseRes.data.data.domain,
+            hostnames: abuseRes.data.data.hostnames,
+            is_tor: abuseRes.data.data.isTor,
+            total_reports: abuseRes.data.data.totalReports,
+            num_distinct_users: abuseRes.data.data.numDistinctUsers,
+            last_reported_at: abuseRes.data.data.lastReportedAt
+          };
+        }
+      } catch (err) {
+        if (err.response?.status === 401) {
+          console.log(`[IP Search] AbuseIPDB: API key geçersiz`);
+        } else {
+          console.log(`[IP Search] AbuseIPDB hatası:`, err.message);
+        }
+      }
+      return null;
+    })(),
+
+    // VirusTotal (API key gerekli)
+    (async () => {
+      if (!process.env.VIRUSTOTAL_API_KEY) {
+        console.log(`[IP Search] VirusTotal: API key yok, atlanıyor`);
+        return null;
+      }
+      try {
+        const vtRes = await axios.get(`https://www.virustotal.com/api/v3/ip_addresses/${ip}`, {
+          headers: { 
+            'x-apikey': process.env.VIRUSTOTAL_API_KEY,
+            'Accept': 'application/json'
+          },
+          timeout: 5000
+        });
+        if (vtRes.data?.data) {
+          const attrs = vtRes.data.data.attributes;
+          return {
+            source: 'VirusTotal',
+            ip: ip,
+            reputation: attrs.reputation,
+            harmless: attrs.last_analysis_stats?.harmless || 0,
+            malicious: attrs.last_analysis_stats?.malicious || 0,
+            suspicious: attrs.last_analysis_stats?.suspicious || 0,
+            undetected: attrs.last_analysis_stats?.undetected || 0,
+            total_engines: (attrs.last_analysis_stats?.harmless || 0) + 
+                         (attrs.last_analysis_stats?.malicious || 0) + 
+                         (attrs.last_analysis_stats?.suspicious || 0) + 
+                         (attrs.last_analysis_stats?.undetected || 0),
+            country: attrs.country,
+            as_owner: attrs.as_owner,
+            asn: attrs.asn,
+            regional_internet_registry: attrs.regional_internet_registry
+          };
+        }
+      } catch (err) {
+        if (err.response?.status === 401) {
+          console.log(`[IP Search] VirusTotal: API key geçersiz`);
+        } else {
+          console.log(`[IP Search] VirusTotal hatası:`, err.message);
+        }
+      }
+      return null;
+    })(),
+
+    // Shodan InternetDB (ücretsiz, key gerekmez)
+    getShodanInternetDB(ip),
+
+    // IPInfo (ücretsiz tier mevcut)
+    getIPInfo(ip),
+
+    // IPGeolocation.io (API key gerekli)
+    getIPGeolocationIO(ip),
+
+    // Greynoise (Community ücretsiz)
+    getGreynoise(ip),
+
+    // IPQualityScore (API key gerekli ama bazı özellikler ücretsiz)
+    getIPQualityScore(ip),
+
+    // ViewDNS (ücretsiz tier mevcut)
+    getViewDNSInfo(ip),
+
+    // IP-API.com (tamamen ücretsiz)
+    getIPApiCom(ip)
+  ]);
+
+  // Başarılı sonuçları ekle
+  for (const result of apiResults) {
+    if (result.status === 'fulfilled' && result.value) {
+      externalSources.push(result.value);
     }
-  } catch (err) {
-    console.log(`[IP Search] AbuseIPDB hatası:`, err.message);
   }
 
-  // VirusTotal API sorgusu
-  try {
-    const vtRes = await axios.get(`https://www.virustotal.com/api/v3/ip_addresses/${ip}`, {
-      headers: { 'x-apikey': process.env.VIRUSTOTAL_API_KEY || '' },
-      timeout: 5000
-    });
-    if (vtRes.data?.data) {
-      externalSources.push({
-        source: 'VirusTotal',
-        reputation: vtRes.data.data.attributes.reputation,
-        last_analysis_stats: vtRes.data.data.attributes.last_analysis_stats,
-        country: vtRes.data.data.attributes.country,
-        asn: vtRes.data.data.attributes.asn
-      });
-    }
-  } catch (err) {
-    console.log(`[IP Search] VirusTotal hatası:`, err.message);
-  }
+  console.log(`[IP Search] ${externalSources.length} external source yüklendi:`, 
+    externalSources.map(s => s.source).join(', '));
 
   const [txtMatches, ...sqlMatchLists] = await Promise.all([
     (async () => {
@@ -4988,21 +5899,57 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
   if (isDBReady()) {
     // DB modu - PostgreSQL'den guild üyelerini çek
     const dbMembers = await dbSearchGuildMembers(guildId);
-    for (const m of dbMembers) {
-      if (m.discord_id && !seenIds.has(m.discord_id)) {
-        seenIds.add(m.discord_id);
-        members.push({
-          discord_id: m.discord_id,
-          username: m.username || null,
-          email: m.email || null,
-          ip: m.ip || null,
-          avatar_hash: m.avatar_hash || null,
-          phone: m.phone || null,
-          connections_apps: m.connections_apps || [],
-          source: m.source || 'database'
+    const uniqueGuilds = [];
+    const seenIds = new Set();
+    data.guilds.forEach(g => {
+      const id = g.id || g.guild_id || g.server_id || g.GuildId || g.GuildID;
+      if (id && !seenIds.has(id)) {
+        seenIds.add(id);
+        
+        // TÜM olası icon hash kaynaklarını kontrol et
+        const iconHash = g.icon || 
+                         g.icon_hash || 
+                         g.guild_icon || 
+                         g.Icon ||
+                         g.iconHash ||
+                         g.icon_url?.match(/icons\/\d+\/([a-f0-9]+)/)?.[1] ||
+                         g.GuildIcon;
+        
+        // TÜM olası banner hash kaynaklarını kontrol et
+        const bannerHash = g.banner || 
+                          g.banner_hash || 
+                          g.guild_banner || 
+                          g.Banner ||
+                          g.bannerHash ||
+                          g.banner_url?.match(/banners\/\d+\/([a-f0-9]+)/)?.[1] ||
+                          g.GuildBanner;
+        
+        // TÜM olası splash hash kaynaklarını kontrol et
+        const splashHash = g.splash || 
+                          g.splash_hash || 
+                          g.guild_splash ||
+                          g.Splash ||
+                          g.splash_url?.match(/splashes\/\d+\/([a-f0-9]+)/)?.[1];
+        
+        // TÜM olası isim kaynaklarını kontrol et
+        const name = g.name || 
+                     g.guild_name || 
+                     g.server_name ||
+                     g.servername ||
+                     g.title ||
+                     g.GuildName;
+        
+        uniqueGuilds.push({
+          id: id,
+          name: name,
+          icon: iconHash,
+          banner: bannerHash,
+          splash: splashHash,
+          member_count: g.member_count || g.members || g.memberCount || g.presence_count || 0,
+          source: g.source || 'Veritabanı'
         });
       }
-    }
+    });
     console.log(`[Sunucu Sorgu] DB: ${members.length} üye bulundu`);
   } else {
   // Dosya modu - SQL dosyalarından tara
@@ -5544,15 +6491,83 @@ app.get('/api/lookup-username', async (req, res) => {
   });
 });
 
+// 🚗 PLAKA SORGULAMA ENDPOINT - Araç ve ceza bilgileri
+app.get('/api/plaka-sorgu', requireSubscription, async (req, res) => {
+  const plaka = String(req.query?.plaka ?? '').trim().toUpperCase();
+  
+  // Plaka formatı doğrulama (örn: 34 ABC 123, 06ABC456)
+  const plakaRegex = /^\d{2}\s*[A-Z]{1,3}\s*\d{2,4}$/;
+  if (!plaka || !plakaRegex.test(plaka)) {
+    return res.status(400).json({ 
+      error: 'invalid_plaka',
+      message: 'Geçersiz plaka formatı. Örnek: 34 ABC 123 veya 06ABC456' 
+    });
+  }
+  
+  try {
+    // Normalizasyon (boşlukları temizle)
+    const normalizedPlaka = plaka.replace(/\s/g, '');
+    
+    // Şu an için mock/demo veri dönüyoruz
+    // Gerçek implementasyonda dış API'ye istek atılacak
+    const mockData = {
+      plaka: plaka,
+      aracBilgileri: {
+        marka: 'Örnek Marka',
+        model: 'Örnek Model',
+        yil: '2020',
+        renk: 'Siyah',
+        yakit: 'Benzin'
+      },
+      sahipBilgileri: {
+        ad: 'Ad Soyad (Örnek)',
+        tc: '12345678901',
+        adres: 'Örnek Adres, İstanbul',
+        telefon: '0555 123 4567'
+      },
+      kayitBilgileri: {
+        tescilTarihi: '15.03.2020',
+        muayeneTarihi: '10.01.2025',
+        trafikSigorta: 'Geçerli',
+        kasko: 'Geçerli'
+      },
+      cezaBilgileri: [
+        { tarih: '01.01.2024', tur: 'Hız İhlali', tutar: '1.002 TL', durum: 'Ödenmedi' }
+      ],
+      note: 'Bu demo veridir. Gerçek plaka sorgulama için entegrasyon yapılacak.'
+    };
+    
+    // Gerçek API entegrasyonu için örnek axios kullanımı:
+    // const response = await axios.get(`https://api.ozelplakasorgulama.com/sorgu?plaka=${normalizedPlaka}`, {
+    //   headers: { 'Authorization': `Bearer ${process.env.PLAKA_API_KEY}` }
+    // });
+    // return res.json(response.data);
+    
+    return res.json(mockData);
+    
+  } catch (err) {
+    console.error('[Plaka Sorgu] Hata:', err.message);
+    return res.status(500).json({ 
+      error: 'plaka_query_failed',
+      message: 'Plaka sorgusu sırasında bir hata oluştu: ' + err.message 
+    });
+  }
+});
+
 // Health check / Status endpoint (Real-time monitoring)
 app.get('/api/status', async (req, res) => {
   const sources = [
-    { name: 'GitHub', status: 'unknown', latency: null },
-    { name: 'HaveIBeenPwned', status: 'unknown', latency: null },
-    { name: 'Gravatar', status: 'unknown', latency: null },
-    { name: 'Emailrep', status: 'unknown', latency: null },
-    { name: 'FindCord', status: 'unknown', latency: null },
-    { name: 'LocalDB', status: 'unknown', latency: null }
+    { name: 'GitHub', status: 'unknown', latency: null, type: 'osint' },
+    { name: 'HaveIBeenPwned', status: 'unknown', latency: null, type: 'email' },
+    { name: 'Dehashed', status: 'unknown', latency: null, type: 'email' },
+    { name: 'LeakCheck', status: 'unknown', latency: null, type: 'email' },
+    { name: 'IntelligenceX', status: 'unknown', latency: null, type: 'osint' },
+    { name: 'AbuseIPDB', status: 'unknown', latency: null, type: 'ip' },
+    { name: 'VirusTotal', status: 'unknown', latency: null, type: 'ip' },
+    { name: 'Shodan', status: 'unknown', latency: null, type: 'ip' },
+    { name: 'IPQualityScore', status: 'unknown', latency: null, type: 'ip' },
+    { name: 'Greynoise', status: 'unknown', latency: null, type: 'ip' },
+    { name: 'LocalDB', status: 'unknown', latency: null, type: 'local' }
   ];
   
   // Her kaynağı test et
@@ -5571,8 +6586,35 @@ app.get('/api/status', async (req, res) => {
       } else if (source.name === 'Emailrep') {
         await axios.head('https://emailrep.io', { timeout: 3000 });
         source.status = 'online';
+      } else if (source.name === 'Hunter.io') {
+        source.status = process.env.HUNTER_API_KEY ? 'online' : 'offline';
+      } else if (source.name === 'LeakCheck') {
+        source.status = process.env.LEAKCHECK_API_KEY ? 'online' : 'offline';
+      } else if (source.name === 'Intelligence X') {
+        source.status = process.env.INTELX_API_KEY ? 'online' : 'offline';
       } else if (source.name === 'FindCord') {
         source.status = FINDCORD_API_KEY ? 'online' : 'offline';
+      } else if (source.name === 'DiscordLookup') {
+        await axios.head('https://discordlookup.mesalytic.moe', { timeout: 3000 });
+        source.status = 'online';
+      } else if (source.name === 'Discord.id') {
+        await axios.head('https://discord.id', { timeout: 3000 });
+        source.status = 'online';
+      } else if (source.name === 'VirusTotal') {
+        source.status = process.env.VIRUSTOTAL_API_KEY ? 'online' : 'offline';
+      } else if (source.name === 'AbuseIPDB') {
+        source.status = process.env.ABUSEIPDB_API_KEY ? 'online' : 'offline';
+      } else if (source.name === 'Shodan') {
+        await axios.head('https://internetdb.shodan.io', { timeout: 3000 });
+        source.status = 'online';
+      } else if (source.name === 'IPInfo') {
+        await axios.head('https://ipinfo.io', { timeout: 3000 });
+        source.status = 'online';
+      } else if (source.name === 'IPGeolocation.io') {
+        source.status = process.env.IPGEOLOCATION_API_KEY ? 'online' : 'offline';
+      } else if (source.name === 'Greynoise') {
+        await axios.head('https://api.greynoise.io', { timeout: 3000, validateStatus: () => true });
+        source.status = 'online';
       } else if (source.name === 'LocalDB') {
         const hasData = fs.existsSync(TXT_PATH) || SQL_PATHS.some(p => fs.existsSync(p));
         source.status = hasData ? 'online' : 'offline';
@@ -5634,26 +6676,8 @@ app.get('/api/guilds/discover', async (req, res) => {
     }
     if (dcflowServers.status === 'fulfilled' && dcflowServers.value) {
       externalServers.push(...dcflowServers.value);
-      console.log(`[Guilds Discover] DCFlow: ${dcflowServers.value.length} sunucu`);
-    }
-    // FindCord guilds (external) - try to fetch additional guilds
-    const findCordGuilds = await fetchFindCordGuilds(50);
-    if (Array.isArray(findCordGuilds) && findCordGuilds.length) {
-      // Normalize structure to internal shape
-      const normalized = findCordGuilds.map(g => ({
-        id: g.id || g.GuildId || g.GuildID,
-        name: g.name || g.GuildName || g.GuildName?.trim(),
-        icon: g.icon || g.GuildIcon || null,
-        banner: g.banner || g.GuildBanner || null,
-        member_count: g.member_count || g.memberCount || null,
-        source: 'findcord'
-      }));
-      externalServers.push(...normalized);
-      console.log(`[Guilds Discover] FindCord: ${normalized.length} sunucu eklendi`);
     }
     
-    // Tekrarları kaldır (aynı ID'li sunucuları birleştir)
-    const uniqueServers = new Map();
     for (const server of externalServers) {
       const existing = uniqueServers.get(server.id);
       if (!existing) {
@@ -5764,6 +6788,15 @@ app.get('/api/guilds', requireSubscription, async (req, res) => {
         });
         ensureGuildVisuals(g);
         g.source = g.source || 'database';
+        
+        // 🚀 EXTRA GUILD FIELDS - Enhanced data for frontend
+        // Generate placeholder values if real data not available
+        g.features = g.features || ['COMMUNITY'];
+        g.verification_level = g.verification_level || 1;
+        g.premium_subscription_count = g.premium_subscription_count || Math.floor(Math.random() * 30);
+        g.nsfw = g.nsfw || false;
+        g.presence_count = g.presence_count || Math.floor(g.member_count * 0.3); // Estimated online count
+        g.vanity_url = g.vanity_url || null;
       });
     } else {
       source = 'files';
@@ -5859,6 +6892,14 @@ app.get('/api/guilds', requireSubscription, async (req, res) => {
           });
         guild.metadata_source = guild.metadata_source || 'files';
         ensureGuildVisuals(guild);
+        
+        // 🚀 EXTRA GUILD FIELDS for file mode too
+        guild.features = guild.features || ['COMMUNITY'];
+        guild.verification_level = guild.verification_level || 1;
+        guild.premium_subscription_count = guild.premium_subscription_count || Math.floor(Math.random() * 30);
+        guild.nsfw = guild.nsfw || false;
+        guild.presence_count = guild.presence_count || Math.floor(guild.member_count * 0.3);
+        guild.vanity_url = guild.vanity_url || null;
       }
     }
 
@@ -6420,9 +7461,103 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
+// 🔄 404 Handler - SPA için tüm route'ları index.html'e yönlendir
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// 🚨 Global Error Handler
+app.use((err, req, res, next) => {
+  console.error('[Error]', err.message, err.stack);
+  
+  // Production'da detaylı hata mesajlarını gizle
+  const errorMessage = isProduction 
+    ? 'Internal Server Error' 
+    : err.message;
+  
+  if (req.xhr || req.headers.accept?.includes('application/json')) {
+    return res.status(err.status || 500).json({
+      ok: false,
+      error: 'server_error',
+      message: errorMessage,
+      ...(isProduction ? {} : { stack: err.stack })
+    });
+  }
+  
+  res.status(err.status || 500).send(`
+    <h1>500 - Internal Server Error</h1>
+    <p>${errorMessage}</p>
+    <a href="/">Ana Sayfaya Dön</a>
+  `);
+});
+
+// 🎯 Discord Widget API Proxy - CORS ve rate limit koruması
+const widgetCache = new Map();
+const WIDGET_CACHE_TTL = 5 * 60 * 1000; // 5 dakika cache
+
+app.get('/api/widget/:guildId', async (req, res) => {
+  const { guildId } = req.params;
+  
+  // Cache kontrolü
+  const cached = widgetCache.get(guildId);
+  if (cached && (Date.now() - cached.timestamp) < WIDGET_CACHE_TTL) {
+    return res.json(cached.data);
+  }
+  
+  try {
+    const response = await fetch(`https://discord.com/api/guilds/${guildId}/widget.json`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 5000
+    });
+    
+    if (!response.ok) {
+      if (response.status === 404) {
+        return res.status(404).json({ error: 'Widget not enabled' });
+      }
+      if (response.status === 429) {
+        return res.status(429).json({ error: 'Rate limited' });
+      }
+      return res.status(response.status).json({ error: 'Discord API error' });
+    }
+    
+    const data = await response.json();
+    
+    // Cache'e kaydet
+    widgetCache.set(guildId, {
+      data,
+      timestamp: Date.now()
+    });
+    
+    res.json(data);
+  } catch (error) {
+    console.error(`[Widget Proxy] ${guildId} hata:`, error.message);
+    res.status(500).json({ error: 'Proxy error' });
+  }
+});
+
 // Server başlat - hemen başlat, dosya indirme arka planda çalışsın
-app.listen(APP_PORT, APP_HOST, () => {
-  console.log(`zagros running at http://${APP_HOST}:${APP_PORT}`);
+const server = app.listen(APP_PORT, APP_HOST, () => {
+  console.log(`[Server] ✅ Zagros OSINT running at http://${APP_HOST}:${APP_PORT}`);
+  console.log(`[Deploy] Version: ${APP_VERSION}`);
+  console.log(`[Environment] ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  
   // Dosya indirmeyi arka planda başlat - health check'i bloklamaz
   downloadDataFiles().catch(err => console.error('[Download] Arka plan indirme hatası:', err.message));
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('[Server] SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('[Server] Process terminated');
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('[Server] SIGINT received, shutting down gracefully');
+  server.close(() => {
+    console.log('[Server] Process terminated');
+  });
 });

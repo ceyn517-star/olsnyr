@@ -2227,3 +2227,485 @@ body {
     transform: translateY(0);
   }
 }
+
+/* 🏢 TÜM SUNUCULAR LİSTESİ - Geliştirilmiş */
+.all-guilds-container {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.all-guilds-header {
+  text-align: center;
+  margin-bottom: 24px;
+  padding: 24px;
+  background: linear-gradient(145deg, rgba(88, 101, 242, 0.15), rgba(114, 137, 218, 0.08));
+  border-radius: 20px;
+  border: 1px solid rgba(88, 101, 242, 0.25);
+  box-shadow: 0 8px 32px rgba(88, 101, 242, 0.1);
+}
+
+.all-guilds-header h2 {
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 12px;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.all-guilds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.all-guild-card {
+  background: linear-gradient(145deg, rgba(35, 35, 40, 0.9), rgba(28, 28, 33, 0.95));
+  border: 1px solid rgba(88, 101, 242, 0.15);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  min-height: 80px;
+}
+
+.all-guild-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(88, 101, 242, 0.4);
+  box-shadow: 0 8px 32px rgba(88, 101, 242, 0.2);
+}
+
+/* Sıra numarası badge */
+.guild-order-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, #5865f2, #7289da);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+}
+
+/* 🎯 SUNUCU İKONU - YENİ DÜZEN */
+.all-guild-icon {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #5865f2, #7289da);
+  border: 2px solid rgba(88, 101, 242, 0.4);
+  box-shadow: 0 4px 12px rgba(88, 101, 242, 0.2);
+}
+
+.all-guild-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 12px;
+  display: block;
+}
+
+.all-guild-icon-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+  text-transform: uppercase;
+}
+
+.all-guild-info {
+  flex: 1;
+  min-width: 0;
+  padding-left: 8px;
+}
+
+.all-guild-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.all-guild-id {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 6px;
+}
+
+.all-guild-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #aaa;
+}
+
+/* 🚀 ENHANCED GUILD CARDS V2 - Glassmorphism & Gradient Edition */
+
+/* Animated gradient backgrounds for cards */
+.all-guild-card {
+  position: relative;
+  background: linear-gradient(145deg, rgba(35, 35, 40, 0.85), rgba(28, 28, 33, 0.9));
+  border: 1px solid rgba(88, 101, 242, 0.2);
+  border-radius: 20px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  cursor: pointer;
+  overflow: hidden;
+  min-height: 100px;
+  backdrop-filter: blur(10px);
+  box-shadow: 
+    0 4px 24px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Gradient overlay on hover */
+.all-guild-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, 
+    rgba(88, 101, 242, 0.1) 0%, 
+    transparent 50%, 
+    rgba(235, 69, 158, 0.1) 100%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  border-radius: 20px;
+  pointer-events: none;
+}
+
+.all-guild-card:hover::before {
+  opacity: 1;
+}
+
+.all-guild-card:hover {
+  transform: translateY(-5px) scale(1.02);
+  border-color: rgba(88, 101, 242, 0.5);
+  box-shadow: 
+    0 20px 40px rgba(88, 101, 242, 0.25),
+    0 0 60px rgba(88, 101, 242, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* Animated border on hover */
+.all-guild-card::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 20px;
+  padding: 1px;
+  background: linear-gradient(135deg, 
+    rgba(88, 101, 242, 0) 0%,
+    rgba(88, 101, 242, 0) 50%,
+    rgba(88, 101, 242, 0) 100%);
+  -webkit-mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.all-guild-card:hover::after {
+  background: linear-gradient(135deg, 
+    rgba(88, 101, 242, 0.8) 0%,
+    rgba(235, 69, 158, 0.8) 50%,
+    rgba(88, 101, 242, 0.8) 100%);
+  opacity: 1;
+}
+
+/* Enhanced guild icon with animated ring */
+.all-guild-icon {
+  position: relative;
+  flex-shrink: 0;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  overflow: visible;
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 0 0 3px rgba(88, 101, 242, 0.3),
+    0 0 0 6px rgba(88, 101, 242, 0.1);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.all-guild-card:hover .all-guild-icon {
+  transform: scale(1.1);
+  box-shadow: 
+    0 12px 32px rgba(88, 101, 242, 0.4),
+    0 0 0 4px rgba(88, 101, 242, 0.5),
+    0 0 0 8px rgba(88, 101, 242, 0.2),
+    0 0 40px rgba(88, 101, 242, 0.3);
+}
+
+/* Animated ring around icon */
+.all-guild-icon::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 24px;
+  border: 2px solid transparent;
+  background: linear-gradient(135deg, #5865F2, #EB459E, #57F287, #5865F2) border-box;
+  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  animation: rotateRing 3s linear infinite;
+}
+
+@keyframes rotateRing {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.all-guild-card:hover .all-guild-icon::before {
+  opacity: 0.6;
+}
+
+/* Guild info enhancement */
+.all-guild-info {
+  flex: 1;
+  min-width: 0;
+  padding-left: 8px;
+  z-index: 1;
+}
+
+.all-guild-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 4px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: linear-gradient(135deg, #fff 0%, #e0e0e0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.all-guild-id {
+  font-size: 11px;
+  color: #7289da;
+  font-family: 'JetBrains Mono', monospace;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+}
+
+/* Enhanced metadata badges */
+.all-guild-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: #b9bbbe;
+  flex-wrap: wrap;
+}
+
+.guild-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-weight: 600;
+  font-size: 11px;
+  transition: all 0.3s ease;
+}
+
+.guild-badge.members {
+  color: #57F287;
+  border-color: rgba(87, 242, 135, 0.3);
+}
+
+.guild-badge.boost {
+  color: #FAA61A;
+  border-color: rgba(250, 166, 26, 0.3);
+}
+
+.guild-badge.verified {
+  color: #5865F2;
+  border-color: rgba(88, 101, 242, 0.3);
+}
+
+.guild-badge.nsfw {
+  color: #ED4245;
+  border-color: rgba(237, 66, 69, 0.3);
+}
+
+/* Enhanced order badge */
+.guild-order-badge {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #5865F2, #4752C4);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 
+    0 4px 12px rgba(88, 101, 242, 0.4),
+    0 0 0 3px rgba(35, 35, 40, 0.9);
+  z-index: 10;
+  transition: all 0.3s ease;
+}
+
+.all-guild-card:hover .guild-order-badge {
+  transform: scale(1.2);
+  box-shadow: 
+    0 6px 16px rgba(88, 101, 242, 0.6),
+    0 0 0 3px rgba(35, 35, 40, 0.9),
+    0 0 20px rgba(88, 101, 242, 0.4);
+}
+
+/* Arrow enhancement */
+.all-guild-arrow {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(88, 101, 242, 0.1);
+  border: 1px solid rgba(88, 101, 242, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5865F2;
+  font-size: 18px;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 1;
+}
+
+.all-guild-card:hover .all-guild-arrow {
+  background: linear-gradient(135deg, #5865F2, #4752C4);
+  color: #fff;
+  transform: translateX(4px);
+  box-shadow: 0 8px 24px rgba(88, 101, 242, 0.4);
+}
+
+/* Loading skeleton */
+.guild-skeleton {
+  background: linear-gradient(90deg, 
+    rgba(35, 35, 40, 0.8) 25%, 
+    rgba(55, 55, 65, 0.8) 50%, 
+    rgba(35, 35, 40, 0.8) 75%);
+  background-size: 200% 100%;
+  animation: skeletonLoading 1.5s ease-in-out infinite;
+  border-radius: 20px;
+}
+
+@keyframes skeletonLoading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Grid responsive enhancement */
+@media (max-width: 768px) {
+  .all-guilds-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .all-guild-card {
+    min-height: 90px;
+    padding: 16px;
+  }
+  
+  .all-guild-icon {
+    width: 56px;
+    height: 56px;
+  }
+  
+  .all-guild-name {
+    font-size: 16px;
+  }
+}
+
+/* Pulse animation for live servers */
+@keyframes livePulse {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 rgba(87, 242, 135, 0.4);
+  }
+  50% { 
+    box-shadow: 0 0 0 8px rgba(87, 242, 135, 0);
+  }
+}
+
+.guild-live-indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #57F287;
+  animation: livePulse 2s ease-in-out infinite;
+  z-index: 10;
+}
+
+/* Guild features chips */
+.guild-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.guild-feature-chip {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(88, 101, 242, 0.15);
+  color: #5865F2;
+  border: 1px solid rgba(88, 101, 242, 0.3);
+}

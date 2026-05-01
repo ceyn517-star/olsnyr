@@ -691,6 +691,442 @@ button.ghost {
   margin-top: 8px;
 }
 
+/* Data Tables - Modern Dark Theme */
+.data-section {
+  margin: 20px 0;
+  background: rgba(44, 47, 51, 0.6);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(88, 101, 242, 0.2);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-top: 12px;
+}
+
+.data-table thead {
+  background: rgba(88, 101, 242, 0.15);
+}
+
+.data-table th {
+  padding: 12px 10px;
+  text-align: left;
+  font-weight: 600;
+  color: #fff;
+  border-bottom: 2px solid rgba(88, 101, 242, 0.3);
+  font-size: 13px;
+}
+
+.data-table td {
+  padding: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.data-table tbody tr:hover {
+  background: rgba(88, 101, 242, 0.1);
+}
+
+/* Yetkili sunucu satırları */
+.data-table tbody tr.row-owner {
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.15) 0%, transparent 100%);
+  border-left: 3px solid #FFD700;
+}
+
+.data-table tbody tr.row-admin {
+  background: linear-gradient(90deg, rgba(88, 101, 242, 0.15) 0%, transparent 100%);
+  border-left: 3px solid #5865F2;
+}
+
+.data-table tbody tr.row-owner:hover {
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.25) 0%, rgba(88, 101, 242, 0.1) 100%);
+}
+
+.data-table tbody tr.row-admin:hover {
+  background: linear-gradient(90deg, rgba(88, 101, 242, 0.25) 0%, rgba(88, 101, 242, 0.1) 100%);
+}
+
+.data-table .mono {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Table Avatars */
+.table-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 2px solid rgba(88, 101, 242, 0.3);
+}
+
+.table-avatar-placeholder {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #5865F2 0%, #4752C4 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: white;
+}
+
+.table-avatar-small {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+  border: 2px solid rgba(88, 101, 242, 0.3);
+}
+
+.table-avatar-small-placeholder {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #5865F2 0%, #4752C4 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: white;
+}
+
+/* Copy Button */
+.copy-btn-small {
+  padding: 6px 10px;
+  background: rgba(88, 101, 242, 0.2);
+  border: 1px solid rgba(88, 101, 242, 0.4);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.copy-btn-small:hover {
+  background: rgba(88, 101, 242, 0.4);
+  transform: scale(1.05);
+}
+
+/* Message Preview */
+.message-preview {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* More Row */
+.more-row {
+  padding: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(88, 101, 242, 0.05);
+  border-radius: 0 0 8px 8px;
+}
+
+/* Section Title */
+.section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Modern Sunucu Kartları - Mobil Uyumlu */
+.servers-list-modern {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.server-card-modern {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.15) 0%, rgba(44, 47, 51, 0.8) 100%);
+  border: 1px solid rgba(88, 101, 242, 0.3);
+  transition: all 0.3s ease;
+  min-height: 80px;
+}
+
+.server-card-modern:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(88, 101, 242, 0.3);
+  border-color: rgba(88, 101, 242, 0.6);
+}
+
+.server-card-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  position: relative;
+  z-index: 2;
+  background: linear-gradient(90deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.4) 50%, transparent 100%);
+  min-height: 80px;
+}
+
+.server-icon-wrap {
+  flex-shrink: 0;
+}
+
+.server-icon-modern {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  object-fit: cover;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.server-icon-fallback {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #5865F2 0%, #4752C4 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.server-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.server-name-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+
+.server-joined {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.server-bio {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 6px;
+  line-height: 1.4;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.server-id {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 6px;
+  font-family: monospace;
+}
+
+.server-badge-booster {
+  font-size: 11px;
+  padding: 3px 10px;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25) 0%, rgba(255, 165, 0, 0.25) 100%);
+  border: 1px solid rgba(255, 215, 0, 0.5);
+  border-radius: 12px;
+  color: #FFD700;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+.server-badge-owner {
+  font-size: 11px;
+  padding: 3px 10px;
+  background: linear-gradient(135deg, rgba(255, 0, 0, 0.25) 0%, rgba(200, 0, 0, 0.25) 100%);
+  border: 1px solid rgba(255, 100, 100, 0.5);
+  border-radius: 12px;
+  color: #FF6B6B;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+.server-more {
+  padding: 16px;
+  text-align: center;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(88, 101, 242, 0.1);
+  border-radius: 12px;
+  border: 1px dashed rgba(88, 101, 242, 0.4);
+}
+
+/* Mobil Uyumlu Tasarım */
+@media (max-width: 768px) {
+  .server-card-modern {
+    min-height: 70px;
+  }
+  
+  .server-card-content {
+    padding: 12px 16px;
+    gap: 12px;
+    min-height: 70px;
+  }
+  
+  .server-icon-modern,
+  .server-icon-fallback {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+  }
+  
+  .server-name-line {
+    font-size: 15px;
+  }
+  
+  .server-joined {
+    font-size: 12px;
+  }
+  
+  .section-title {
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .server-card-content {
+    padding: 10px 12px;
+  }
+  
+  .server-icon-modern,
+  .server-icon-fallback {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+  }
+  
+  .server-name-line {
+    font-size: 14px;
+  }
+  
+  .server-badge-booster,
+  .server-badge-owner {
+    font-size: 10px;
+    padding: 2px 8px;
+  }
+}
+
+/* Dikey Sunucu Listesi */
+.servers-list-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.server-item-vertical {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: rgba(88, 101, 242, 0.08);
+  border: 1px solid rgba(88, 101, 242, 0.2);
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.server-item-vertical:hover {
+  background: rgba(88, 101, 242, 0.15);
+  border-color: rgba(88, 101, 242, 0.35);
+  transform: translateX(4px);
+}
+
+.server-avatar-wrap {
+  flex-shrink: 0;
+}
+
+.server-avatar-large {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  object-fit: cover;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.server-avatar-placeholder {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #5865F2 0%, #4752C4 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.server-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.server-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.server-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.booster-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: rgba(255, 215, 0, 0.2);
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  border-radius: 10px;
+  color: #FFD700;
+}
+
+.server-more-item {
+  padding: 12px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: rgba(88, 101, 242, 0.05);
+  border-radius: 12px;
+  border: 1px dashed rgba(88, 101, 242, 0.3);
+}
+
 /* Sunucu Listesi Stilleri */
 .guilds-list-container {
   display: flex;
@@ -1221,44 +1657,70 @@ button.ghost {
 }
 
 .member-avatar-section {
-  flex-shrink: 0;
-}
-
-.member-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid rgba(124, 58, 237, 0.3);
-}
-
-.member-avatar-placeholder {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.3), rgba(124, 58, 237, 0.1));
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  flex-shrink: 0;
+  width: 80px;
+  height: 80px;
+}
+
+.member-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 3px solid var(--primary);
+  box-shadow: 0 4px 16px rgba(88, 101, 242, 0.4);
+  background: var(--bg-2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: block;
+}
+
+.member-avatar:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 24px rgba(88, 101, 242, 0.5);
+}
+
+.member-avatar-placeholder {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary) 0%, #7289da 50%, var(--primary-light) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
   font-weight: 700;
-  color: #8b9bff;
-  border: 2px solid rgba(124, 58, 237, 0.3);
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 16px rgba(88, 101, 242, 0.4);
 }
 
 .member-info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .member-username {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--text);
   margin-bottom: 4px;
   display: flex;
   align-items: center;
   gap: 6px;
+  word-break: break-word;
+  line-height: 1.3;
+}
+
+.member-username .username-tag {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .member-nick {
@@ -1799,6 +2261,511 @@ a.tag:hover::after {
 .tag.ebay { background: rgba(234, 179, 8, 0.12); color: #fbbf24; border-color: rgba(234, 179, 8, 0.25); }
 .tag.riot { background: rgba(239, 68, 68, 0.12); color: #f87171; border-color: rgba(239, 68, 68, 0.25); }
 .tag.epic { background: rgba(255, 255, 255, 0.08); color: #e2e8f0; border-color: rgba(255, 255, 255, 0.15); }
+
+/* Premium Contact Card - FindCord Theme */
+.premium-contact-card {
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.15), rgba(88, 101, 242, 0.05));
+  border: 1px solid rgba(88, 101, 242, 0.3);
+  border-radius: 20px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.premium-contact-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(88, 101, 242, 0.2);
+}
+
+.findcord-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: rgba(88, 101, 242, 0.1);
+  border-bottom: 1px solid rgba(88, 101, 242, 0.2);
+}
+
+.findcord-logo {
+  font-size: 18px;
+}
+
+.findcord-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #a78bfa;
+}
+
+.contact-banner {
+  position: relative;
+  height: 100px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #5865f2, #4752c4);
+}
+
+.contact-banner-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.8;
+}
+
+.contact-banner-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.4));
+  display: flex;
+  align-items: flex-end;
+  padding: 10px;
+}
+
+.ceyn-watermark {
+  font-size: 12px;
+  color: rgba(255,255,255,0.6);
+  font-style: italic;
+  font-weight: 500;
+}
+
+.contact-content {
+  padding: 0 20px 20px;
+  position: relative;
+}
+
+.contact-avatar-wrapper {
+  position: relative;
+  margin-top: -40px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 4px solid rgba(15, 15, 35, 0.8);
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.contact-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.contact-status {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 3px solid rgba(15, 15, 35, 0.9);
+  background: #3ba55d;
+}
+
+.findcord-badge {
+  position: absolute;
+  bottom: 0;
+  right: -10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #5865f2;
+  color: white;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  border: 2px solid rgba(15, 15, 35, 0.9);
+}
+
+.contact-info {
+  margin-top: 12px;
+}
+
+.contact-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 4px 0;
+}
+
+.verified-badge {
+  color: #5865f2;
+  font-size: 16px;
+}
+
+.contact-id {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 4px 0;
+  font-family: monospace;
+}
+
+.contact-role {
+  font-size: 13px;
+  color: #faa61a;
+  margin: 0 0 10px 0;
+  font-weight: 500;
+}
+
+.contact-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+
+.findcord-badge-sm {
+  background: rgba(88, 101, 242, 0.2);
+  color: #a78bfa;
+}
+
+.contact-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-friend {
+  background: linear-gradient(135deg, #5865f2, #4752c4);
+  color: white;
+  flex: 1;
+  min-width: 140px;
+  padding: 12px 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-friend:hover {
+  background: linear-gradient(135deg, #4752c4, #3c45a5);
+  transform: translateY(-2px);
+}
+
+.btn-sales {
+  background: linear-gradient(135deg, #3ba55d, #2d7d46);
+  color: white;
+  flex: 1;
+  min-width: 140px;
+  padding: 12px 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-sales:hover {
+  background: linear-gradient(135deg, #2d7d46, #1e5930);
+  transform: translateY(-2px);
+}
+
+.premium-notice {
+  margin-top: 15px;
+  padding: 12px;
+  background: rgba(250, 166, 26, 0.1);
+  border: 1px solid rgba(250, 166, 26, 0.3);
+  border-radius: 10px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.premium-notice strong {
+  color: #faa61a;
+}
+
+/* API Source Badges */
+.api-sources {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 15px;
+  background: rgba(88, 101, 242, 0.08);
+  border-radius: 8px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+
+.api-sources-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.api-source-badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+/* FindCord Extras Section */
+.fc-extras-section {
+  margin-top: 15px;
+  padding: 15px;
+  background: rgba(88, 101, 242, 0.05);
+  border: 1px solid rgba(88, 101, 242, 0.15);
+  border-radius: 12px;
+}
+
+.fc-extras-section .section-title {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #a78bfa;
+}
+
+.fc-extras {
+  display: grid;
+  gap: 8px;
+}
+
+.fc-extras .info-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.fc-extras .info-row:last-child {
+  border-bottom: none;
+}
+
+.fc-extras .info-icon {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+}
+
+.fc-extras .info-label {
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 100px;
+}
+
+.fc-extras .info-value {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+/* Premium Contact Card - Ceyn */
+.premium-contact-card {
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.15), rgba(88, 101, 242, 0.05));
+  border: 1px solid rgba(88, 101, 242, 0.3);
+  border-radius: 20px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.premium-contact-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(88, 101, 242, 0.2);
+}
+
+.contact-banner {
+  position: relative;
+  height: 100px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #5865f2, #4752c4);
+}
+
+.contact-banner-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.8;
+}
+
+.contact-banner-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.4));
+}
+
+.contact-content {
+  padding: 0 20px 20px;
+  position: relative;
+}
+
+.contact-avatar-wrapper {
+  position: relative;
+  margin-top: -40px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 4px solid rgba(15, 15, 35, 0.8);
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.contact-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.contact-status {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 3px solid rgba(15, 15, 35, 0.9);
+  background: #3ba55d;
+}
+
+.contact-status.online {
+  background: #3ba55d;
+}
+
+.contact-info {
+  margin-top: 12px;
+}
+
+.contact-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 4px 0;
+}
+
+.contact-id {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 4px 0;
+  font-family: monospace;
+}
+
+.contact-role {
+  font-size: 13px;
+  color: #faa61a;
+  margin: 0 0 10px 0;
+  font-weight: 500;
+}
+
+.contact-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+
+.contact-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-discord {
+  background: linear-gradient(135deg, #5865f2, #4752c4);
+  color: white;
+  flex: 1;
+  min-width: 120px;
+  padding: 12px 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-discord:hover {
+  background: linear-gradient(135deg, #4752c4, #3c45a5);
+  transform: translateY(-2px);
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text);
+  flex: 1;
+  min-width: 120px;
+  padding: 12px 16px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.btn-outline:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-2px);
+}
+
+/* Premium Section Enhancements */
+.premium-input-header {
+  text-align: center;
+  padding: 20px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  margin-bottom: 15px;
+}
+
+.premium-icon-large {
+  font-size: 48px;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.premium-benefits {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.benefits-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.benefits-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.benefits-list li:last-child {
+  border-bottom: none;
+}
+
+.benefit-icon {
+  color: #3ba55d;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #5865f2, #4752c4);
+  color: white;
+  font-weight: 600;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #4752c4, #3c45a5);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(88, 101, 242, 0.3);
+}
 .tag.battlenet { background: rgba(59, 130, 246, 0.12); color: #60a5fa; border-color: rgba(59, 130, 246, 0.25); }
 .tag.crunchyroll { background: rgba(249, 115, 22, 0.12); color: #fb923c; border-color: rgba(249, 115, 22, 0.25); }
 .tag.domain { background: rgba(168, 85, 247, 0.12); color: #c084fc; border-color: rgba(168, 85, 247, 0.25); }
@@ -1835,4 +2802,1578 @@ a.tag:hover::after {
   .card { width: 100%; margin: 0; }
   input, button { font-size: 14px; padding: 12px; }
   #authCard { opacity: 1; transform: none; }
+}
+
+/* Sunucu Kartlari - Gelistirilmis Stiller */
+.guild-list-card {
+  background: linear-gradient(145deg, rgba(30, 30, 35, 0.9), rgba(25, 25, 30, 0.95));
+  border: 1px solid rgba(88, 101, 242, 0.2);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Banner arka planı olduğunda metin okunabilirliği */
+.guild-list-card[style*="background-image"] {
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+.guild-list-card[style*="background-image"] .guild-card-name {
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  font-weight: 800;
+}
+
+.guild-list-card[style*="background-image"] .guild-card-id {
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+}
+
+.guild-list-card:hover {
+  transform: translateX(8px);
+  border-color: rgba(88, 101, 242, 0.5);
+  box-shadow: 0 8px 32px rgba(88, 101, 242, 0.2);
+}
+
+.guild-card-icon-img {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 2px solid rgba(88, 101, 242, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(145deg, rgba(40, 40, 45, 0.9), rgba(30, 30, 35, 0.95));
+  flex-shrink: 0;
+}
+
+.guild-card-icon-placeholder {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #5865f2, #7289da);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+  border: 2px solid rgba(88, 101, 242, 0.3);
+  flex-shrink: 0;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+/* Otomatik oluşturulan ikonlar */
+.guild-card-icon-auto {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Sunucu kartındaki üye avatarları */
+.guild-card-members {
+  display: flex;
+  gap: -6px;
+  margin-top: 12px;
+}
+
+.guild-card-members .member-avatar,
+.guild-card-members .member-avatar-placeholder {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid rgba(30, 30, 35, 0.9);
+  margin-left: -8px;
+  object-fit: cover;
+  background: linear-gradient(135deg, #5865f2, #7289da);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+  flex-shrink: 0;
+}
+
+.guild-card-members .member-avatar:first-child,
+.guild-card-members .member-avatar-placeholder:first-child {
+  margin-left: 0;
+}
+
+.guild-card-members .member-avatar:hover {
+  transform: scale(1.2);
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(88, 101, 242, 0.5);
+}
+
+.guild-card-members-count {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-left: 8px;
+  display: flex;
+  align-items: center;
+}
+
+.guild-card-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 6px;
+}
+
+.guild-card-id {
+  font-family: monospace;
+  font-size: 11px;
+  color: #8b9bff;
+  background: rgba(139, 155, 255, 0.1);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.guild-card-count {
+  font-size: 12px;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+/* 📱 MOBILE RESPONSIVE - TAM UYUMLULUK */
+
+/* Genel Mobile Ayarlar */
+@media (max-width: 1200px) {
+  .search-container {
+    max-width: 95%;
+    padding: 20px;
+  }
+  
+  .results-container {
+    max-width: 95%;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Header Mobile */
+  .header {
+    flex-direction: column;
+    gap: 15px;
+    padding: 15px;
+    text-align: center;
+  }
+  
+  .logo {
+    font-size: 20px;
+  }
+  
+  .header-actions {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  
+  /* Search Container */
+  .search-container {
+    padding: 15px;
+    margin: 10px;
+  }
+  
+  .search-header {
+    flex-direction: column;
+    gap: 15px;
+    text-align: center;
+  }
+  
+  .search-title {
+    font-size: 20px;
+  }
+  
+  /* Search Tabs */
+  .search-tabs {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+  }
+  
+  .search-tabs .tab {
+    flex: 1;
+    min-width: calc(50% - 6px);
+    padding: 10px 8px;
+    font-size: 12px;
+  }
+  
+  /* Input Area */
+  .input-area {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .input-area input {
+    width: 100%;
+    padding: 14px 16px;
+    font-size: 16px; /* iOS zoom önlemi */
+  }
+  
+  .input-area button {
+    width: 100%;
+    padding: 14px 20px;
+  }
+  
+  /* Results Grid */
+  .guild-list-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  /* User Cards */
+  .user-card {
+    padding: 15px;
+  }
+  
+  .user-card .user-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 12px;
+  }
+  
+  .user-card .user-avatar {
+    width: 80px;
+    height: 80px;
+  }
+  
+  /* Table Responsive */
+  .table-scroll-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .guild-members-table {
+    min-width: 700px;
+  }
+  
+  .guild-members-table th,
+  .guild-members-table td {
+    padding: 10px 8px;
+    font-size: 12px;
+  }
+  
+  /* Member Cards Mobile */
+  .guild-members-grid {
+    grid-template-columns: 1fr;
+    padding: 12px;
+    gap: 12px;
+  }
+  
+  .guild-member-card {
+    flex-direction: row;
+    align-items: center;
+  }
+  
+  .member-avatar-section {
+    width: 70px;
+    height: 70px;
+    min-width: 70px;
+    padding: 8px;
+  }
+  
+  .member-avatar,
+  .member-avatar-placeholder {
+    width: 54px;
+    height: 54px;
+  }
+  
+  .member-info {
+    padding: 12px;
+    flex: 1;
+  }
+  
+  .member-username {
+    font-size: 14px;
+  }
+  
+  .member-actions {
+    flex-direction: column;
+    padding: 8px 12px;
+    gap: 6px;
+  }
+  
+  .member-btn {
+    padding: 8px 12px;
+    font-size: 11px;
+  }
+  
+  /* Modal Mobile */
+  .member-detail-modal {
+    padding: 10px;
+  }
+  
+  .member-detail-content {
+    max-height: 95vh;
+    border-radius: 16px;
+  }
+  
+  .member-detail-header {
+    flex-direction: column;
+    text-align: center;
+    padding: 16px;
+    gap: 12px;
+  }
+  
+  .member-detail-avatar {
+    width: 70px;
+    height: 70px;
+  }
+  
+  .member-detail-info h3 {
+    font-size: 18px;
+  }
+  
+  .member-detail-body {
+    padding: 16px;
+  }
+  
+  .member-detail-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 10px 12px;
+  }
+  
+  .member-detail-value {
+    width: 100%;
+    word-break: break-all;
+  }
+  
+  /* Plaka Results Mobile */
+  .plaka-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .plaka-badge {
+    font-size: 20px;
+    padding: 12px 20px;
+  }
+  
+  .plaka-ceza-item {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 10px 12px;
+  }
+  
+  /* Toast Mobile */
+  .toast-container {
+    left: 10px;
+    right: 10px;
+    top: 10px;
+    align-items: stretch;
+  }
+  
+  .toast {
+    min-width: unset;
+    max-width: unset;
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 13px;
+  }
+  
+  /* Login Card */
+  .login-card {
+    margin: 10px;
+    padding: 20px;
+  }
+  
+  .login-card h1 {
+    font-size: 24px;
+  }
+  
+  .form-group input {
+    font-size: 16px; /* iOS zoom önlemi */
+  }
+  
+  /* OSINT Modal */
+  .osint-modal-content {
+    max-width: 95vw;
+    max-height: 85vh;
+  }
+  
+  .osint-breaches-table {
+    min-width: 500px;
+  }
+  
+  /* Search History */
+  .history-list {
+    max-height: 200px;
+  }
+  
+  .history-item {
+    padding: 10px 12px;
+  }
+  
+  /* Loading */
+  .loading-container {
+    padding: 30px 20px;
+  }
+  
+  .loading-spinner {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+@media (max-width: 480px) {
+  /* Extra Small Devices */
+  .search-tabs .tab {
+    min-width: 100%;
+    font-size: 11px;
+    padding: 8px 6px;
+  }
+  
+  .user-card .user-avatar {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .member-avatar-section {
+    width: 60px;
+    height: 60px;
+    min-width: 60px;
+  }
+  
+  .member-avatar,
+  .member-avatar-placeholder {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .guild-list-card {
+    padding: 12px;
+  }
+  
+  .guild-card-icon {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .member-detail-avatar {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .member-detail-info h3 {
+    font-size: 16px;
+  }
+  
+  .plaka-badge {
+    font-size: 16px;
+    padding: 10px 16px;
+  }
+}
+
+/* Touch Optimizations */
+@media (hover: none) and (pointer: coarse) {
+  /* Touch cihazlar için hover efektlerini kaldır */
+  .guild-member-card:hover {
+    transform: none;
+    box-shadow: 0 4px 12px rgba(88, 101, 242, 0.15);
+  }
+  
+  .guild-list-card:hover {
+    transform: none;
+  }
+  
+  .user-card:hover {
+    transform: none;
+  }
+  
+  /* Touch için büyük butonlar */
+  .member-btn,
+  .copy-btn,
+  .osint-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Touch feedback */
+  .guild-member-card:active,
+  .guild-list-card:active,
+  .user-card:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+}
+
+/* Landscape Mode */
+@media (max-height: 500px) and (orientation: landscape) {
+  .member-detail-modal {
+    align-items: flex-start;
+    padding-top: 20px;
+    overflow-y: auto;
+  }
+  
+  .member-detail-content {
+    max-height: none;
+    margin: 20px 0;
+  }
+}
+
+/* Safe Area for Notch Devices */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .header {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .toast-container {
+    top: calc(10px + env(safe-area-inset-top));
+  }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .header,
+  .search-container,
+  .member-actions,
+  .copy-btn,
+  .osint-btn {
+    display: none !important;
+  }
+  
+  .results-container {
+    max-width: 100%;
+  }
+  
+  body {
+    background: white;
+    color: black;
+  }
+}
+
+/* Uye Kartlari - Yeni Butonlu Görünüm */
+.guild-members-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+.guild-member-card {
+  background: linear-gradient(145deg, rgba(35, 35, 40, 0.95), rgba(25, 25, 30, 0.98));
+  border: 1px solid rgba(88, 101, 242, 0.15);
+  border-radius: 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  overflow: hidden;
+  position: relative;
+}
+
+.guild-member-card:hover {
+  transform: translateY(-4px) scale(1.02);
+  border-color: rgba(88, 101, 242, 0.5);
+  box-shadow: 0 12px 40px rgba(88, 101, 242, 0.25);
+}
+
+.guild-member-card:active {
+  transform: translateY(-2px) scale(0.98);
+}
+
+/* Avatar Section */
+.member-avatar-section {
+  flex-shrink: 0;
+  width: 100%;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.1), rgba(114, 137, 218, 0.05));
+  position: relative;
+  padding: 20px;
+}
+
+.member-avatar {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid rgba(88, 101, 242, 0.5);
+  box-shadow: 0 8px 32px rgba(88, 101, 242, 0.4);
+  background: var(--bg-2);
+  transition: all 0.3s ease;
+}
+
+.guild-member-card:hover .member-avatar {
+  transform: scale(1.08);
+  border-color: rgba(88, 101, 242, 0.8);
+  box-shadow: 0 12px 40px rgba(88, 101, 242, 0.5);
+}
+
+.member-avatar-placeholder {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #5865f2, #7289da);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  font-weight: 800;
+  color: white;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 32px rgba(88, 101, 242, 0.4);
+  border: 4px solid rgba(88, 101, 242, 0.5);
+}
+
+/* Member Info Section */
+.member-info {
+  flex: 1;
+  min-width: 0;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.member-username {
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.member-username .username-tag {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.member-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #8b9bff;
+  background: rgba(139, 155, 255, 0.15);
+  padding: 4px 10px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  border: 1px solid rgba(139, 155, 255, 0.2);
+}
+
+.member-email {
+  font-size: 13px;
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
+  padding: 4px 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  word-break: break-all;
+}
+
+.member-ip {
+  font-size: 13px;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+  padding: 4px 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Action Buttons */
+.member-actions {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.member-btn {
+  flex: 1;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.member-btn-primary {
+  background: linear-gradient(135deg, #5865f2, #4752c4);
+  color: white;
+}
+
+.member-btn-primary:hover {
+  background: linear-gradient(135deg, #4752c4, #3c45a5);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(88, 101, 242, 0.4);
+}
+
+.member-btn-secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.member-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+/* Member Detail Modal */
+.member-detail-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(10px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s ease;
+}
+
+.member-detail-modal.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.member-detail-content {
+  background: linear-gradient(145deg, rgba(30, 30, 35, 0.98), rgba(20, 20, 25, 0.99));
+  border: 1px solid rgba(88, 101, 242, 0.3);
+  border-radius: 24px;
+  max-width: 600px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+  transform: scale(0.9) translateY(20px);
+  transition: all 0.3s ease;
+}
+
+.member-detail-modal.active .member-detail-content {
+  transform: scale(1) translateY(0);
+}
+
+.member-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 24px;
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.15), rgba(114, 137, 218, 0.05));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.member-detail-avatar {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 4px solid rgba(88, 101, 242, 0.5);
+  box-shadow: 0 8px 32px rgba(88, 101, 242, 0.3);
+}
+
+.member-detail-info h3 {
+  font-size: 24px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.member-detail-info p {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+}
+
+.member-detail-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.member-detail-close:hover {
+  background: rgba(239, 68, 68, 0.3);
+  transform: rotate(90deg);
+}
+
+.member-detail-body {
+  padding: 24px;
+}
+
+.member-detail-section {
+  margin-bottom: 20px;
+}
+
+.member-detail-section h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+.member-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  margin-bottom: 8px;
+}
+
+.member-detail-label {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+}
+
+.member-detail-value {
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .guild-members-grid {
+    grid-template-columns: 1fr;
+    padding: 12px;
+    gap: 12px;
+  }
+  
+  .guild-member-card {
+    flex-direction: row;
+    align-items: center;
+  }
+  
+  .member-avatar-section {
+    width: 80px;
+    height: 80px;
+    min-width: 80px;
+    padding: 12px;
+    background: transparent;
+  }
+  
+  .member-avatar,
+  .member-avatar-placeholder {
+    width: 64px;
+    height: 64px;
+  }
+  
+  .member-info {
+    padding: 12px;
+  }
+  
+  .member-username {
+    font-size: 15px;
+  }
+  
+  .member-actions {
+    padding: 10px 12px;
+  }
+  
+  .member-btn {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  
+  .member-detail-content {
+    margin: 10px;
+    max-height: 95vh;
+    border-radius: 20px;
+  }
+  
+  .member-detail-header {
+    flex-direction: column;
+    text-align: center;
+    padding: 20px;
+  }
+  
+  .member-detail-avatar {
+    width: 80px;
+    height: 80px;
+  }
+  
+  .member-detail-info h3 {
+    font-size: 20px;
+  }
+}
+
+/* 🏢 TÜM SUNUCULAR LİSTESİ - Geliştirilmiş */
+.all-guilds-container {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.all-guilds-header {
+  text-align: center;
+  margin-bottom: 24px;
+  padding: 24px;
+  background: linear-gradient(145deg, rgba(88, 101, 242, 0.15), rgba(114, 137, 218, 0.08));
+  border-radius: 20px;
+  border: 1px solid rgba(88, 101, 242, 0.25);
+  box-shadow: 0 8px 32px rgba(88, 101, 242, 0.1);
+}
+
+.all-guilds-header h2 {
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 12px;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.all-guilds-stats {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(88, 101, 242, 0.3);
+}
+
+.all-guilds-search {
+  margin-bottom: 20px;
+}
+
+.guild-search-input {
+  width: 100%;
+  padding: 14px 18px;
+  border: 1px solid rgba(88, 101, 242, 0.3);
+  border-radius: 12px;
+  background: rgba(30, 30, 35, 0.8);
+  color: #fff;
+  font-size: 15px;
+  transition: all 0.2s ease;
+}
+
+.guild-search-input:focus {
+  outline: none;
+  border-color: rgba(88, 101, 242, 0.6);
+  box-shadow: 0 0 0 3px rgba(88, 101, 242, 0.1);
+}
+
+.guild-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.all-guilds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.all-guild-card {
+  background: linear-gradient(145deg, rgba(35, 35, 40, 0.9), rgba(28, 28, 33, 0.95));
+  border: 1px solid rgba(88, 101, 242, 0.15);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  min-height: 80px;
+}
+
+.all-guild-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(88, 101, 242, 0.4);
+  box-shadow: 0 8px 32px rgba(88, 101, 242, 0.2);
+}
+
+/* Sıra numarası badge */
+.guild-order-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, #5865f2, #7289da);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+}
+
+/* Banner arka planı olduğunda */
+.all-guild-card[style*="background-image"] {
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+.all-guild-card[style*="background-image"] .all-guild-name {
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  font-weight: 700;
+}
+
+.all-guild-card[style*="background-image"] .all-guild-id,
+.all-guild-card[style*="background-image"] .all-guild-meta {
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+}
+
+.all-guild-icon {
+  flex-shrink: 0;
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #5865f2, #7289da);
+}
+
+.all-guild-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 2px solid rgba(88, 101, 242, 0.3);
+  display: block;
+}
+
+.all-guild-icon-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  text-shadow: 0 2px 4px rgba(0,0,0,0.4);
+}
+
+.all-guild-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.all-guild-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.all-guild-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #8b9bff;
+  background: rgba(139, 155, 255, 0.1);
+  padding: 2px 8px;
+  border-radius: 6px;
+  display: inline-block;
+  margin-bottom: 6px;
+}
+
+.all-guild-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.all-guild-count {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.all-guild-source {
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.all-guild-arrow {
+  font-size: 20px;
+  color: rgba(88, 101, 242, 0.6);
+  transition: all 0.2s ease;
+}
+
+.all-guild-card:hover .all-guild-arrow {
+  color: rgba(88, 101, 242, 1);
+  transform: translateX(4px);
+}
+
+/* Mobil responsive */
+@media (max-width: 768px) {
+  .all-guilds-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .all-guild-card {
+    padding: 12px;
+    min-height: 70px;
+  }
+  
+  .all-guilds-header h2 {
+    font-size: 22px;
+  }
+  
+  .all-guilds-stats {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .stat-item {
+    font-size: 13px;
+  }
+  
+  .guild-order-badge {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+  }
+  
+  .all-guild-icon {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+/* Sunucu Detay Header */
+.guild-header-card {
+  background: linear-gradient(145deg, rgba(30, 30, 35, 0.95), rgba(22, 22, 28, 0.98));
+  border: 1px solid rgba(88, 101, 242, 0.25);
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 24px;
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.guild-icon-section {
+  flex-shrink: 0;
+}
+
+.guild-icon-img {
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  object-fit: cover;
+  border: 3px solid rgba(88, 101, 242, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  background: linear-gradient(145deg, rgba(40, 40, 45, 0.9), rgba(30, 30, 35, 0.95));
+}
+
+.guild-icon-placeholder {
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  font-weight: 800;
+  color: white;
+  background: linear-gradient(135deg, #5865f2, #7289da);
+  border: 3px solid rgba(88, 101, 242, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.guild-info-section {
+  flex: 1;
+  min-width: 0;
+}
+
+.guild-banner {
+  margin-top: 16px;
+  height: 120px;
+  border-radius: 12px;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.guild-name {
+  font-size: 22px;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.guild-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.guild-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #8b9bff;
+  background: rgba(139, 155, 255, 0.1);
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(139, 155, 255, 0.2);
+}
+
+.guild-count {
+  font-size: 13px;
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(74, 222, 128, 0.2);
+}
+
+.guild-location-count {
+  font-size: 13px;
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(96, 165, 250, 0.2);
+}
+
+/* 🚗 PLAKA SORGULAMA STILLERI */
+.plaka-results-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.plaka-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.plaka-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #5865f2, #4752c4);
+  color: white;
+  font-size: 28px;
+  font-weight: 800;
+  padding: 15px 40px;
+  border-radius: 12px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 32px rgba(88, 101, 242, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 15px;
+}
+
+.plaka-title {
+  font-size: 20px;
+  color: #fff;
+  font-weight: 600;
+}
+
+.plaka-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.plaka-card {
+  background: linear-gradient(145deg, rgba(35, 35, 40, 0.95), rgba(25, 25, 30, 0.98));
+  border: 1px solid rgba(88, 101, 242, 0.2);
+  border-radius: 16px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.plaka-card:hover {
+  transform: translateY(-5px);
+  border-color: rgba(88, 101, 242, 0.5);
+  box-shadow: 0 12px 40px rgba(88, 101, 242, 0.25);
+}
+
+.plaka-card.owner-card {
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.plaka-card.owner-card:hover {
+  border-color: rgba(239, 68, 68, 0.5);
+  box-shadow: 0 12px 40px rgba(239, 68, 68, 0.2);
+}
+
+.plaka-card-header {
+  background: linear-gradient(135deg, rgba(88, 101, 242, 0.3), rgba(88, 101, 242, 0.1));
+  color: #fff;
+  padding: 14px 18px;
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plaka-card.owner-card .plaka-card-header {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.1));
+}
+
+.plaka-card-body {
+  padding: 18px;
+}
+
+.plaka-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.plaka-info-row:last-child {
+  border-bottom: none;
+}
+
+.plaka-label {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.plaka-value {
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  text-align: right;
+  word-break: break-word;
+  max-width: 60%;
+}
+
+.plaka-value.owner-name {
+  color: #f87171;
+  font-weight: 700;
+}
+
+.plaka-value.status-valid {
+  color: #4ade80;
+}
+
+.plaka-value.status-invalid {
+  color: #f87171;
+}
+
+.plaka-value.mono {
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+/* Ceza Bölümü */
+.plaka-ceza-section {
+  background: linear-gradient(145deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05));
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.plaka-ceza-header {
+  color: #f87171;
+  font-weight: 700;
+  font-size: 16px;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plaka-ceza-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plaka-ceza-item {
+  display: grid;
+  grid-template-columns: 100px 1fr 100px 80px;
+  gap: 15px;
+  padding: 12px 15px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.plaka-ceza-item.unpaid {
+  border-left: 3px solid #f87171;
+}
+
+.plaka-ceza-item.paid {
+  border-left: 3px solid #4ade80;
+}
+
+.ceza-date {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+}
+
+.ceza-type {
+  color: #fff;
+  font-weight: 500;
+}
+
+.ceza-amount {
+  color: #fbbf24;
+  font-weight: 700;
+  text-align: right;
+}
+
+.ceza-status {
+  text-align: right;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.ceza-status.paid {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.ceza-status.unpaid {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.plaka-no-ceza {
+  text-align: center;
+  color: #4ade80;
+  font-size: 16px;
+  padding: 20px;
+  background: rgba(74, 222, 128, 0.05);
+  border-radius: 12px;
+  border: 1px solid rgba(74, 222, 128, 0.2);
+  margin-bottom: 20px;
+}
+
+.plaka-disclaimer {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  padding: 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 10px;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .plaka-cards {
+    grid-template-columns: 1fr;
+  }
+  
+  .plaka-badge {
+    font-size: 22px;
+    padding: 12px 25px;
+  }
+  
+  .plaka-ceza-item {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  
+  .ceza-amount,
+  .ceza-status {
+    text-align: left;
+  }
 }
