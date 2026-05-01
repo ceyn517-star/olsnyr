@@ -63,6 +63,46 @@ async function ensureSqlLoaded() {
   }
 }
 
+// TXT users cache (avoid parsing huge JSON repeatedly on every request)
+let txtUsersIndexCache = {
+  key: null,            // `${path}|${mtimeMs}|${size}`
+  loadedAt: 0,
+  index: null           // Map<discord_id, user>
+};
+const TXT_INDEX_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function getTxtUsersIndex() {
+  if (!TXT_PATH || !fs.existsSync(TXT_PATH)) return null;
+  try {
+    const st = await fs.promises.stat(TXT_PATH);
+    const cacheKey = `${TXT_PATH}|${st.mtimeMs}|${st.size}`;
+    const fresh = txtUsersIndexCache.key === cacheKey && txtUsersIndexCache.index && (Date.now() - txtUsersIndexCache.loadedAt) < TXT_INDEX_TTL_MS;
+    if (fresh) return txtUsersIndexCache.index;
+
+    // Safety: prevent accidental huge JSON parse loops
+    const maxBytes = 60 * 1024 * 1024; // 60MB
+    if (st.size > maxBytes) {
+      console.log(`[TXT] Çok büyük TXT JSON (${Math.round(st.size/1024/1024)}MB). Index oluşturma atlandı.`);
+      return null;
+    }
+
+    const content = await fs.promises.readFile(TXT_PATH, 'utf8');
+    const obj = safeJsonParse(content);
+    const users = Array.isArray(obj?.users) ? obj.users : [];
+    const index = new Map();
+    for (const u of users) {
+      const id = String(u?.discord_id ?? '').trim();
+      if (!id) continue;
+      if (!index.has(id)) index.set(id, u);
+    }
+    txtUsersIndexCache = { key: cacheKey, loadedAt: Date.now(), index };
+    return index;
+  } catch (err) {
+    console.log('[TXT] Index oluşturma hatası:', err.message);
+    return null;
+  }
+}
+
 function detectDataSources() {
   let txtPath = TXT_PATH;
   let sqlPaths = SQL_PATHS;
@@ -3289,13 +3329,11 @@ function extractConnectionAppsFromLine(line) {
 }
 
 async function searchTxtByDiscordId(discordId) {
-  if (!fs.existsSync(TXT_PATH)) return [];
-  const content = await fs.promises.readFile(TXT_PATH, 'utf8');
-  const obj = safeJsonParse(content);
-  const users = Array.isArray(obj?.users) ? obj.users : [];
-
-  const matches = users.filter((u) => String(u?.discord_id ?? '') === String(discordId));
-  return matches.map((u) => ({
+  const index = await getTxtUsersIndex();
+  if (!index) return [];
+  const u = index.get(String(discordId));
+  if (!u) return [];
+  return [{
     source: path.basename(TXT_PATH),
     discord_id: String(u.discord_id ?? ''),
     username: u.username ?? null,
@@ -3307,7 +3345,44 @@ async function searchTxtByDiscordId(discordId) {
     last_login: u.last_login ?? null,
     subscription_type: u.subscription_type ?? null,
     is_active: u.is_active ?? null
-  }));
+  }];
+}
+
+async function scanSqlFileForIp(sqlPath, ipNeedle, excludeDiscordId, maxHits = 25, maxLines = 250_000) {
+  if (!ipNeedle) return [];
+  if (!fs.existsSync(sqlPath)) return [];
+  const needle = String(ipNeedle);
+  const exclude = String(excludeDiscordId || '');
+  const matches = [];
+  let lineCount = 0;
+  try {
+    const rs = fs.createReadStream(sqlPath, { encoding: 'utf8' });
+    const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
+    for await (const line of rl) {
+      lineCount++;
+      if (maxLines && lineCount > maxLines) break;
+      if (!line.includes(needle)) continue;
+      // Basit extraction (mevcut logic ile uyumlu)
+      const idMatch = line.match(/'(\d{10,20})'/);
+      const emailMatch = line.match(/'([^']+@[^']+)'/);
+      const friendId = idMatch?.[1];
+      if (!friendId || friendId === exclude) continue;
+      matches.push({
+        discord_id: friendId,
+        email: emailMatch ? emailMatch[1] : null,
+        relation: 'same_ip',
+        common_ip: needle,
+        confidence: 'high',
+        source: path.basename(sqlPath)
+      });
+      if (matches.length >= maxHits) break;
+    }
+    rl.close();
+    rs.close();
+  } catch {
+    // ignore
+  }
+  return matches;
 }
 
 function extractField(line, fieldName) {
@@ -4791,29 +4866,16 @@ app.get('/api/search', async (req, res) => {
       for (const sqlPath of SQL_PATHS) {
         try {
           if (!fs.existsSync(sqlPath)) continue;
-          const content = await fs.promises.readFile(sqlPath, 'utf8');
-          const lines = content.split('\n');
-          
-          for (const line of lines) {
-            if (line.includes(merged.ip) && !line.includes(discordId)) {
-              // Discord ID ve email çıkar
-              const idMatch = line.match(/'(\d{10,20})'/);
-              const emailMatch = line.match(/'([^']+@[^']+)'/);
-              
-              if (idMatch && idMatch[1] !== discordId) {
-                const friendId = idMatch[1];
-                const friendEmail = emailMatch ? emailMatch[1] : null;
-                
-                if (!friendCandidates.has(friendId)) {
-                  friendCandidates.set(friendId, {
-                    discord_id: friendId,
-                    email: friendEmail,
-                    relation: 'same_ip',
-                    common_ip: merged.ip,
-                    confidence: 'high'
-                  });
-                }
-              }
+          const ipMatches = await scanSqlFileForIp(sqlPath, merged.ip, discordId, 25, 250_000);
+          for (const m of ipMatches) {
+            if (!friendCandidates.has(m.discord_id)) {
+              friendCandidates.set(m.discord_id, {
+                discord_id: m.discord_id,
+                email: m.email,
+                relation: m.relation,
+                common_ip: m.common_ip,
+                confidence: m.confidence
+              });
             }
           }
         } catch { /* ignore */ }
@@ -4879,18 +4941,13 @@ app.get('/api/search', async (req, res) => {
   for (const friend of potentialFriends) {
     try {
       // TXT dosyasından ara
-      if (fs.existsSync(TXT_PATH)) {
-        const content = await fs.promises.readFile(TXT_PATH, 'utf8');
-        const obj = safeJsonParse(content);
-        if (Array.isArray(obj?.users)) {
-          for (const u of obj.users) {
-            if (String(u?.discord_id ?? '') === friend.discord_id) {
-              friend.username = u.username || friend.username;
-              friend.email = u.email || friend.email;
-              friend.found_in = 'TXT';
-              break;
-            }
-          }
+      const txtIndex = await getTxtUsersIndex();
+      if (txtIndex) {
+        const u = txtIndex.get(String(friend.discord_id));
+        if (u) {
+          friend.username = u.username || friend.username;
+          friend.email = u.email || friend.email;
+          friend.found_in = 'TXT';
         }
       }
       
@@ -4899,17 +4956,12 @@ app.get('/api/search', async (req, res) => {
         for (const sqlPath of SQL_PATHS) {
           if (!fs.existsSync(sqlPath)) continue;
           try {
-            const content = await fs.promises.readFile(sqlPath, 'utf8');
-            const lines = content.split('\n');
-            for (const line of lines) {
-              if (line.includes(friend.discord_id)) {
-                const emailMatch = line.match(/'([^']+@[^']+)'/);
-                const usernameMatch = line.match(/'([^']{2,30})'[^']*?,[^']*?'/);
-                if (emailMatch) friend.email = emailMatch[1];
-                if (usernameMatch && !friend.username) friend.username = usernameMatch[1];
-                if (!friend.found_in) friend.found_in = path.basename(sqlPath);
-                break;
-              }
+            const hits = await scanSqlFileForDiscordId(sqlPath, friend.discord_id, 1);
+            const h = hits?.[0];
+            if (h) {
+              if (h.email) friend.email = h.email;
+              if (h.username && !friend.username) friend.username = h.username;
+              if (!friend.found_in) friend.found_in = path.basename(sqlPath);
             }
           } catch { /* ignore */ }
           if (friend.email) break;
