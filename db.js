@@ -458,6 +458,12 @@ export async function runQuery(sql, params) {
   return pool.query(sql, params);
 }
 
+// Execute SQL statement (for data_sources.js)
+export async function execSql(sql) {
+  if (!pool) throw new Error('db_not_ready');
+  return pool.query(sql);
+}
+
 // ============= FIELD İLE ARAMA (Email/IP field tarama) =============
 export async function dbSearchByField(field, value) {
   if (!pool) return [];
