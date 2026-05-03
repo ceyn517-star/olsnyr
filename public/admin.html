@@ -39,22 +39,49 @@
         .btn-success { background: #3BA55D; }
         .btn-success:hover { background: #2D8A4A; }
 
-        /* Login Form */
+        /* Login Form - Enhanced */
         .login-container {
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #1e3c72 100%);
         }
         .login-box {
-            background: rgba(0,0,0,0.4);
-            padding: 40px;
-            border-radius: 16px;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(10px);
+            padding: 50px;
+            border-radius: 20px;
             width: 100%;
-            max-width: 400px;
+            max-width: 420px;
             text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
-        .login-box h2 { margin-bottom: 30px; color: #5865F2; }
+        .login-box h2 { 
+            margin-bottom: 10px; 
+            color: #fff;
+            font-size: 28px;
+            font-weight: 700;
+        }
+        .login-box .subtitle {
+            color: #b9bbbe;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .login-logo {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #5865F2, #4752C4);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: auto;
+            margin-right: auto;
+            font-size: 40px;
+        }
         .form-group {
             margin-bottom: 20px;
             text-align: left;
@@ -201,6 +228,141 @@
         .badge-free { background: #747f8d; }
         .badge-basic { background: #3BA55D; }
         .badge-enterprise { background: #FAA61A; color: #000; }
+
+        /* Sunucu Tablosu - Enhanced */
+        .guild-icon-large {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            object-fit: cover;
+            border: 3px solid #40444b;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: transform 0.3s, border-color 0.3s;
+        }
+        .guild-icon-large:hover {
+            transform: scale(1.1);
+            border-color: #5865F2;
+        }
+        .guild-icon-placeholder {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #40444b, #2f3136);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            border: 3px solid #5865F2;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .guild-banner-preview {
+            width: 120px;
+            height: 68px;
+            border-radius: 8px;
+            object-fit: cover;
+            border: 2px solid #40444b;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .guild-name {
+            font-weight: 700;
+            font-size: 16px;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+        .guild-id-badge {
+            display: inline-block;
+            background: rgba(88, 101, 242, 0.2);
+            color: #5865F2;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-family: monospace;
+            font-weight: 600;
+        }
+        .guild-source-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .guild-source-db { background: #3BA55D; color: white; }
+        .guild-source-cache { background: #FAA61A; color: black; }
+        .guild-source-sql { background: #5865F2; color: white; }
+        .guild-source-findcord { background: #00d4aa; color: black; }
+        
+        /* Üye Avatarları */
+        .member-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #40444b;
+            transition: transform 0.2s;
+        }
+        .member-avatar:hover {
+            transform: scale(1.2);
+            z-index: 10;
+            border-color: #5865F2;
+        }
+        .member-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            max-width: 200px;
+        }
+        .member-more {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #40444b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: #fff;
+        }
+        
+        /* Tablo Satır Hover */
+        tr.guild-row {
+            transition: background-color 0.2s;
+        }
+        tr.guild-row:hover {
+            background: rgba(88, 101, 242, 0.15) !important;
+        }
+        tr.guild-row:hover .guild-icon-large,
+        tr.guild-row:hover .guild-icon-placeholder {
+            border-color: #00d4aa;
+        }
+        
+        /* Buton Düzeni - Merkezi ve Mobil Uyumlu */
+        .form-actions-inline {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            justify-content: flex-start;
+        }
+        
+        @media (max-width: 768px) {
+            .form-actions-inline {
+                flex-direction: column;
+                width: 100%;
+            }
+            .form-actions-inline .btn {
+                width: 100%;
+                margin-bottom: 8px;
+            }
+            .tabs {
+                justify-content: center;
+            }
+            .tab {
+                padding: 10px 16px;
+                font-size: 13px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -234,8 +396,9 @@
         <div class="tabs">
             <div class="tab active" onclick="switchTab('dashboard', event)">📊 Dashboard</div>
             <div class="tab" onclick="switchTab('visitors', event)">👥 Ziyaretçiler</div>
-            <div class="tab" onclick="switchTab('emails', event)">📧 Email Yönetimi</div>
             <div class="tab" onclick="switchTab('subscriptions', event)">🔑 Abonelikler</div>
+            <div class="tab" onclick="switchTab('smsBomber', event)">📱 SMS Bomber</div>
+            <div class="tab" onclick="switchTab('emails', event)">📧 Email Yönetimi</div>
             <div class="tab" onclick="switchTab('guildsAdmin', event)">🛠️ Sunucu Yönetimi</div>
         </div>
 
@@ -405,6 +568,67 @@
                 <p style="margin-top:10px; font-size:13px; color:#b9bbbe;">İsim veya ikon boş bırakılırsa mevcut kayıt silinmez. Yalnızca doldurduğunuz alanlar güncellenir.</p>
             </div>
 
+            <!-- � CYR0NIX MUTUALS API SECTION -->
+            <div class="form-section" style="background: linear-gradient(135deg, #1a2a3a 0%, #0d1b2a 100%); border: 2px solid #00d4aa;">
+                <h3 style="margin-bottom: 15px; color: #00d4aa;">🌐 Cyr0nix Mutuals API</h3>
+                <p style="margin-bottom: 15px; color: #b9bbbe; font-size: 13px;">
+                    Discord ID ile kullanıcının ortak sunucularını, profil bilgilerini ve rollerini çeker.
+                </p>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Discord ID</label>
+                        <input type="text" id="cyr0nixDiscordId" placeholder="972955971171274822">
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <div class="form-actions-inline">
+                            <button class="btn btn-success" type="button" onclick="fetchCyr0nixMutuals()" id="cyr0nixFetchBtn" style="background: #00d4aa; border-color: #00d4aa;">
+                                � Sunucuları Çek
+                            </button>
+                            <button class="btn" type="button" onclick="loadGuildAdminList(true)" id="cyr0nixRefreshBtn">
+                                📝 Listeyi Yenile
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <span id="cyr0nixStatus" style="color:#b9bbbe; margin-left: 10px;"></span>
+                <div id="cyr0nixResults" style="margin-top: 15px; display: none;">
+                    <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #00d4aa;">
+                        <div id="cyr0nixLog"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 📊 VERİ KAYNAKLARI ve YÜKLEME BÖLÜMÜ -->
+            <div class="form-section" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border: 2px solid #5865F2;">
+                <h3 style="margin-bottom: 15px; color: #5865F2;">📊 Veri Kaynakları ve PostgreSQL Yükleme</h3>
+                <p style="margin-bottom: 15px; color: #b9bbbe; font-size: 13px;">
+                    Tüm za*.sql ve discorddata.txt dosyalarını PostgreSQL'e yükle. <strong>Büyük dosyalar için bu işlem uzun sürebilir!</strong>
+                </p>
+                <div class="form-actions-inline">
+                    <button class="btn btn-primary" type="button" onclick="loadDataSources()" id="dataSourcesBtn" style="background: #5865F2; border-color: #5865F2;">
+                        🔍 Dosyaları Tara
+                    </button>
+                    <button class="btn btn-warning" type="button" onclick="downloadSqlFromDrive()" id="downloadSqlBtn" style="background: #ffc107; border-color: #ffc107; color: #000;">
+                        📥 Google Drive'dan İndir
+                    </button>
+                    <button class="btn btn-success" type="button" onclick="loadAllDataToPostgres()" id="loadAllDataBtn" style="background: #00d4aa; border-color: #00d4aa;">
+                        🚀 Tümünü PostgreSQL'e Yükle
+                    </button>
+                    <span id="dataSourcesStatus" style="color:#b9bbbe; margin-left: 10px;"></span>
+                </div>
+                <div id="dataSourcesResults" style="margin-top: 15px; display: none;">
+                    <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12px;">
+                        <div id="dataSourcesContent"></div>
+                    </div>
+                </div>
+                <div id="loadDataResults" style="margin-top: 15px; display: none;">
+                    <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; font-family: monospace; font-size: 12px; color: #00d4aa;">
+                        <div id="loadDataContent"></div>
+                    </div>
+                </div>
+            </div>
+
             <div class="form-section">
                 <h3 style="margin-bottom: 15px;">🔍 Kaydedilen Sunucular</h3>
                 <div class="form-row">
@@ -428,7 +652,8 @@
                     <thead>
                         <tr>
                             <th>Sunucu</th>
-                            <th>Görseller</th>
+                            <th>Banner</th>
+                            <th>Üyeler</th>
                             <th>Açıklama</th>
                             <th>Güncelleme</th>
                             <th>İşlemler</th>
@@ -443,6 +668,59 @@
                 <button type="button" onclick="changeGuildAdminPage(1)">Sonraki ⟶</button>
             </div>
         </div>
+
+        <!-- SMS Bomber Tab - Ceynwashere -->
+        <div id="smsBomberTab" class="tab-content">
+            <div class="form-section" style="background: linear-gradient(135deg, #2d1b69 0%, #1a1a2e 100%); border: 2px solid #5865F2;">
+                <h3 style="margin-bottom: 15px; color: #5865F2;">📱 SMS Bomber - Ceynwashere</h3>
+                <div class="alert alert-danger" style="background: rgba(237, 66, 69, 0.2); border: 1px solid #ED4245; color: #fff; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    ⚠️ <strong>Uyarı:</strong> Bu araç sadece test amaçlıdır. Kötüye kullanım yasaktır! Her işlem arası 2 dakika bekleme süresi vardır.
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Telefon Numarası</label>
+                        <input type="text" id="smsPhone" placeholder="5300000000 (10-11 haneli)" maxlength="11">
+                    </div>
+                    <div class="form-group">
+                        <label>SMS Sayısı (Max 10)</label>
+                        <input type="number" id="smsCount" placeholder="5" min="1" max="10" value="5">
+                    </div>
+                </div>
+                
+                <div class="form-actions-inline">
+                    <button class="btn btn-success" type="button" onclick="startSmsBomber()" id="smsBomberBtn" style="background: #5865F2; font-size: 16px; padding: 12px 30px;">
+                        📱 SMS Gönder
+                    </button>
+                    <button class="btn" type="button" onclick="clearSmsForm()" style="background: #747f8d;">
+                        🗑️ Temizle
+                    </button>
+                </div>
+                
+                <div id="smsStatus" style="margin-top: 15px; padding: 10px; border-radius: 6px; display: none;"></div>
+            </div>
+
+            <div class="form-section">
+                <h3 style="margin-bottom: 15px;">📋 SMS Gönderim Sonuçları</h3>
+                <div class="table-container">
+                    <table id="smsResultsTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Servis</th>
+                                <th>Numara</th>
+                                <th>Durum</th>
+                                <th>Mesaj</th>
+                                <th>Zaman</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div id="smsResultsSummary" style="margin-top: 10px; color: #b9bbbe;"></div>
+            </div>
+        </div>
+
     </div>
 
     <script>
@@ -581,6 +859,7 @@
             if (tab === 'emails') loadEmails();
             if (tab === 'subscriptions') loadSubscriptions();
             if (tab === 'guildsAdmin') loadGuildAdminList(true);
+            if (tab === 'smsBomber') checkSmsBomberStatus();
         }
 
         // Load dashboard stats
@@ -1046,28 +1325,78 @@
         function renderGuildAdminTable(rows) {
             const tbody = document.querySelector('#guildAdminTable tbody');
             if (!rows.length) {
-                tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Henüz kayıt yok</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Henüz kayıt yok</td></tr>';
                 return;
             }
 
             tbody.innerHTML = rows.map(g => {
-                const desc = g.description ? escapeHtml(g.description.length > 160 ? g.description.slice(0, 160) + '…' : g.description) : '-';
-                const updated = g.updated_at ? new Date(g.updated_at).toLocaleString('tr-TR') : '—';
-                const iconLabel = g.icon ? (g.icon.startsWith('http') ? g.icon : `hash:${g.icon.slice(0, 10)}…`) : 'Yok';
-                const bannerLabel = g.banner ? (g.banner.startsWith('http') ? g.banner : `hash:${g.banner.slice(0, 10)}…`) : 'Yok';
+                const desc = g.description ? escapeHtml(g.description.length > 100 ? g.description.slice(0, 100) + '…' : g.description) : '-';
+                const updated = g.updated_at ? new Date(g.updated_at).toLocaleString('tr-TR', {day:'2-digit', month:'2-digit', year:'numeric'}) : '—';
                 const encoded = encodeURIComponent(JSON.stringify(g));
+                
+                // Discord CDN URL'lerini kontrol et
+                const iconUrl = g.icon_url || (g.icon?.startsWith('http') ? g.icon : null);
+                const bannerUrl = g.banner_url || (g.banner?.startsWith('http') ? g.banner : null);
+                
+                // Kaynak badge'i
+                const sourceClass = g.source ? `guild-source-${g.source.replace('.', '_').replace('/', '_')}` : 'guild-source-db';
+                const sourceLabel = g.source ? g.source.toUpperCase() : 'DB';
+                
+                // Üye avatarlarını oluştur
+                let membersHtml = '';
+                if (g.members && g.members.length > 0) {
+                    const visibleMembers = g.members.slice(0, 8);
+                    const moreCount = g.members.length - visibleMembers.length;
+                    membersHtml = `
+                        <div class="member-list" title="${g.members.length} aktif üye">
+                            ${visibleMembers.map(m => 
+                                m.avatar ? 
+                                `<img src="${m.avatar}" class="member-avatar" title="${escapeHtml(m.username)}" alt="">` :
+                                `<div class="member-avatar" style="background: #5865F2; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: bold;">${m.username?.[0]?.toUpperCase() || '?'}</div>`
+                            ).join('')}
+                            ${moreCount > 0 ? `<div class="member-more">+${moreCount}</div>` : ''}
+                        </div>
+                    `;
+                } else if (g.member_count) {
+                    membersHtml = `<span style="color: #72767d; font-size: 12px;">${g.member_count} üye</span>`;
+                }
+                
+                // Widget aktif mi?
+                const widgetBadge = g.widget_enabled ? 
+                    `<span style="color: #3BA55D; font-size: 11px; margin-left: 8px;">● Widget Aktif</span>` : '';
+                
                 return `
-                    <tr>
-                        <td>
-                            <div>${escapeHtml(g.name || '(Tanımsız)')}</div>
-                            <div class="guild-id-pill">${g.guild_id}</div>
+                    <tr class="guild-row">
+                        <td style="min-width: 300px;">
+                            <div style="display: flex; align-items: center; gap: 14px;">
+                                ${iconUrl ? 
+                                    `<img src="${iconUrl}" alt="icon" class="guild-icon-large" onerror="this.className='guild-icon-placeholder'; this.src=''; this.innerHTML='🏢';">` : 
+                                    `<div class="guild-icon-placeholder">🏢</div>`
+                                }
+                                <div style="flex: 1;">
+                                    <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 6px;">
+                                        <div class="guild-name">${escapeHtml(g.name || '(Tanımsız)')}</div>
+                                        ${widgetBadge}
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">
+                                        <span class="guild-id-badge">${g.guild_id}</span>
+                                        <span class="guild-source-badge ${sourceClass}">${sourceLabel}</span>
+                                        ${g.presence_count ? `<span style="color: #3BA55D; font-size: 11px;">● ${g.presence_count} çevrimiçi</span>` : ''}
+                                    </div>
+                                </div>
+                            </div>
                         </td>
-                        <td>
-                            <div>Icon: ${iconLabel !== 'Yok' ? `<a href="${g.icon?.startsWith('http') ? g.icon : '#'}" target="_blank">${escapeHtml(iconLabel)}</a>` : 'Yok'}</div>
-                            <div>Banner: ${bannerLabel !== 'Yok' ? `<a href="${g.banner?.startsWith('http') ? g.banner : '#'}" target="_blank">${escapeHtml(bannerLabel)}</a>` : 'Yok'}</div>
+                        <td style="min-width: 140px;">
+                            ${bannerUrl ? 
+                                `<img src="${bannerUrl}" alt="banner" class="guild-banner-preview" onerror="this.style.display='none';">` : 
+                                '<span style="color: #72767d; font-size: 12px;">-</span>'
+                            }
                         </td>
-                        <td class="guild-desc">${desc}</td>
-                        <td>${updated}</td>
+                        <td style="min-width: 180px;">
+                            ${membersHtml || '<span style="color: #72767d; font-size: 12px;">Üye bilgisi yok</span>'}
+                        </td>
+                        <td class="guild-desc" style="max-width: 250px; font-size: 13px; color: #b9bbbe;">${desc}</td>
+                        <td style="font-size: 12px; color: #72767d; white-space: nowrap;">${updated}</td>
                         <td>
                             <div class="actions">
                                 <button class="btn btn-small" data-guild="${encoded}" onclick="startGuildAdminEdit(this)">Düzenle</button>
@@ -1128,6 +1457,657 @@
                     refreshGuildAdminList();
                 }
             });
+        }
+
+        // 🔄 CYR0NIX MUTUALS API FUNCTIONS
+        async function fetchCyr0nixMutuals() {
+            const discordId = document.getElementById('cyr0nixDiscordId').value.trim();
+            const btn = document.getElementById('cyr0nixFetchBtn');
+            const status = document.getElementById('cyr0nixStatus');
+            const results = document.getElementById('cyr0nixResults');
+            const log = document.getElementById('cyr0nixLog');
+            
+            if (!discordId || !/^\d{17,20}$/.test(discordId)) {
+                status.textContent = '❌ Geçerli bir Discord ID girin (17-20 haneli sayı)';
+                return;
+            }
+            
+            btn.disabled = true;
+            status.textContent = '🔍 Cyr0nix API\'den sunucular çekiliyor...';
+            results.style.display = 'none';
+            
+            try {
+                const res = await fetch(`${API_URL}/api/admin/guilds?discord_id=${discordId}`, {
+                    headers: adminHeaders(),
+                    credentials: 'same-origin'
+                });
+                const data = await res.json();
+                
+                if (!data.ok) throw new Error(data.error || 'API çağrısı başarısız');
+                
+                const cyr0nixData = data.cyr0nix_sync;
+                
+                if (cyr0nixData && cyr0nixData.synced) {
+                    status.textContent = `✅ ${cyr0nixData.count} ortak sunucu bulundu`;
+                    results.style.display = 'block';
+                    
+                    let logHtml = `<strong>� Kullanıcı:</strong> ${cyr0nixData.user?.username || 'Bilinmiyor'}<br>`;
+                    logHtml += `<strong>🆔 ID:</strong> ${cyr0nixData.user?.userId || discordId}<br><br>`;
+                    logHtml += `<strong>📊 ${cyr0nixData.count} Ortak Sunucu:</strong><br><br>`;
+                    
+                    if (data.guilds && data.guilds.length > 0) {
+                        data.guilds.filter(g => g.source === 'cyr0nix').forEach((g, i) => {
+                            logHtml += `${i+1}. <strong>${g.name}</strong> (${g.guild_id})<br>`;
+                            if (g.member_nickname) {
+                                logHtml += `   🏷️ Lakap: ${g.member_nickname}<br>`;
+                            }
+                            if (g.roles && g.roles.length > 0) {
+                                const roleNames = g.roles.map(r => r.name).join(', ');
+                                logHtml += `   🎭 Roller: ${roleNames}<br>`;
+                            }
+                            logHtml += `<br>`;
+                        });
+                    } else {
+                        logHtml += '<em>Ortak sunucu bulunamadı veya kullanıcı self-bot ile aynı sunucuda değil.</em>';
+                    }
+                    
+                    log.innerHTML = logHtml;
+                    
+                    // Listeyi yenile
+                    loadGuildAdminList(true);
+                } else {
+                    status.textContent = '⚠️ Ortak sunucu bulunamadı';
+                    results.style.display = 'block';
+                    log.innerHTML = '<em>Kullanıcı bulunamadı veya ortak sunucu yok. Kullanıcının self-bot ile aynı sunucuda olması gerekir.</em>';
+                }
+                
+            } catch (err) {
+                status.textContent = '❌ Hata: ' + err.message;
+                console.error('Cyr0nix API hatası:', err);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // 📊 VERİ KAYNAKLARI FONKSİYONU
+        async function loadDataSources() {
+            const btn = document.getElementById('dataSourcesBtn');
+            const status = document.getElementById('dataSourcesStatus');
+            const results = document.getElementById('dataSourcesResults');
+            const content = document.getElementById('dataSourcesContent');
+            
+            btn.disabled = true;
+            status.textContent = '🔍 Taranıyor...';
+            results.style.display = 'none';
+            
+            try {
+                const res = await fetch(`${API_URL}/api/admin/data-sources`, {
+                    headers: adminHeaders(),
+                    credentials: 'same-origin'
+                });
+                const data = await res.json();
+                
+                if (!data.ok) throw new Error(data.error || 'Tarama başarısız');
+                
+                const summary = data.summary;
+                status.textContent = `✅ ${summary.sql_count + summary.db_count + summary.txt_count} dosya bulundu (${summary.total_size_mb.toFixed(2)} MB)`;
+                results.style.display = 'block';
+                
+                let html = `<div style="margin-bottom: 15px;">`;
+                html += `<strong>📁 DATA_DIR:</strong> ${data.data_dir}<br>`;
+                html += `<strong>🐘 PostgreSQL:</strong> ${data.db_connected ? '✅ Bağlı' : '❌ Yok'}<br>`;
+                html += `<strong>📊 SQL Yüklendi:</strong> ${data.sql_loaded ? '✅ Evet' : '❌ Hayır'}<br>`;
+                html += `</div><hr style="border-color: #444; margin: 10px 0;">`;
+                
+                // SQL Dosyaları
+                if (data.sources.sql_files.length > 0) {
+                    html += `<div style="margin-bottom: 15px;"><strong>📄 SQL Dosyaları (${data.sources.sql_files.length} adet)</strong><br>`;
+                    data.sources.sql_files.forEach((f, i) => {
+                        html += `<div style="margin: 5px 0; padding: 5px; background: rgba(0,212,170,0.1); border-left: 3px solid #00d4aa;">`;
+                        html += `${i+1}. ${f.name} <span style="color: #00d4aa;">${f.size_mb} MB</span>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                
+                // DB/SQLite Dosyaları
+                if (data.sources.db_files.length > 0) {
+                    html += `<div style="margin-bottom: 15px;"><strong>🗄️ DB/SQLite Dosyaları (${data.sources.db_files.length} adet)</strong><br>`;
+                    data.sources.db_files.forEach((f, i) => {
+                        html += `<div style="margin: 5px 0; padding: 5px; background: rgba(88,101,242,0.1); border-left: 3px solid #5865F2;">`;
+                        html += `${i+1}. ${f.name} <span style="color: #5865F2;">${f.size_mb} MB</span>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                
+                // TXT Dosyaları
+                if (data.sources.txt_files.length > 0) {
+                    html += `<div style="margin-bottom: 15px;"><strong>📝 TXT Dosyaları (${data.sources.txt_files.length} adet)</strong><br>`;
+                    data.sources.txt_files.forEach((f, i) => {
+                        html += `<div style="margin: 5px 0; padding: 5px; background: rgba(255,193,7,0.1); border-left: 3px solid #ffc107;">`;
+                        html += `${i+1}. ${f.name} <span style="color: #ffc107;">${f.size_mb} MB</span>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                
+                // JSON Dosyaları
+                if (data.sources.json_files.length > 0) {
+                    html += `<div style="margin-bottom: 15px;"><strong>📋 JSON Dosyaları (${data.sources.json_files.length} adet)</strong><br>`;
+                    data.sources.json_files.forEach((f, i) => {
+                        html += `<div style="margin: 5px 0; padding: 5px; background: rgba(108,117,125,0.1); border-left: 3px solid #6c757d;">`;
+                        html += `${i+1}. ${f.name} <span style="color: #6c757d;">${f.size_mb} MB</span>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                
+                if (summary.total_size_mb === 0) {
+                    html += `<div style="color: #ff6b6b; text-align: center; padding: 20px;">`;
+                    html += `⚠️ Hiç veri dosyası bulunamadı!<br><br>`;
+                    html += `SQL, DB, SQLite, TXT veya JSON dosyaları DATA_DIR klasörüne yüklenmeli.`;
+                    html += `</div>`;
+                }
+                
+                content.innerHTML = html;
+                
+            } catch (err) {
+                status.textContent = '❌ Hata: ' + err.message;
+                console.error('Veri kaynakları hatası:', err);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // 📥 GOOGLE DRIVE'DAN SQL DOSYALARINI İNDİR
+        async function downloadSqlFromDrive() {
+            const btn = document.getElementById('downloadSqlBtn');
+            const status = document.getElementById('dataSourcesStatus');
+            const results = document.getElementById('loadDataResults');
+            const content = document.getElementById('loadDataContent');
+            
+            if (!confirm('📥 Google Drive\'dan zagros1-6.sql dosyaları indirilecek.\n\nBüyük dosyalar için bu işlem birkaç dakika sürebilir.\n\nDevam etmek istiyor musunuz?')) {
+                return;
+            }
+            
+            btn.disabled = true;
+            status.textContent = '📥 Google Drive\'dan indirme başlatıldı...';
+            results.style.display = 'none';
+            
+            try {
+                const res = await fetch(`${API_URL}/api/admin/download-sql-files`, {
+                    method: 'POST',
+                    headers: adminHeaders(),
+                    credentials: 'same-origin'
+                });
+                
+                const data = await res.json();
+                
+                if (!data.ok) throw new Error(data.error || data.message || 'İndirme başarısız');
+                
+                status.textContent = `✅ İndirme tamamlandı! Başarılı: ${data.results.success.length}, Hatalı: ${data.results.failed.length}, Atlanan: ${data.results.skipped.length}`;
+                results.style.display = 'block';
+                
+                let html = `<div style="margin-bottom: 15px;"><strong>📥 İNDİRME SONUÇLARI</strong><br>`;
+                html += `<strong>Toplam:</strong> ${data.results.total} dosya<br>`;
+                html += `<strong>Başarılı:</strong> ${data.results.success.length}<br>`;
+                html += `<strong>Hatalı:</strong> ${data.results.failed.length}<br>`;
+                html += `<strong>Atlanan (zaten var):</strong> ${data.results.skipped.length}<br></div>`;
+                html += `<hr style="border-color: #444; margin: 10px 0;">`;
+                
+                // Başarılı dosyalar
+                if (data.results.success.length > 0) {
+                    html += `<div style="margin-bottom: 15px;"><strong>✅ Başarılı İndirmeler:</strong><br>`;
+                    data.results.success.forEach((f, i) => {
+                        html += `<div style="margin: 3px 0; padding: 4px; background: rgba(0,212,170,0.1); border-left: 2px solid #00d4aa; font-size: 11px;">`;
+                        html += `${i+1}. ${f.name} (${f.size_mb} MB)`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                
+                // Hatalı dosyalar
+                if (data.results.failed.length > 0) {
+                    html += `<div style="margin-bottom: 15px;"><strong>❌ Hatalı İndirmeler:</strong><br>`;
+                    data.results.failed.forEach((f, i) => {
+                        html += `<div style="margin: 3px 0; padding: 4px; background: rgba(255,107,107,0.1); border-left: 2px solid #ff6b6b; font-size: 11px;">`;
+                        html += `${i+1}. ${f.name} - ${f.error}`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                    
+                    html += `<div style="background: rgba(255,193,7,0.1); padding: 10px; border-left: 3px solid #ffc107; margin-top: 10px;">`;
+                    html += `<strong>⚠️ Google Drive Virüs Taraması:</strong><br>`;
+                    html += `Büyük dosyalar otomatik indirilemiyor. Manuel upload gerekebilir.`;
+                    html += `</div>`;
+                }
+                
+                // Atlanan dosyalar
+                if (data.results.skipped.length > 0) {
+                    html += `<div style="margin-bottom: 15px;"><strong>⏭️ Atlanan (Zaten Var):</strong><br>`;
+                    data.results.skipped.forEach((f, i) => {
+                        html += `<div style="margin: 3px 0; padding: 4px; background: rgba(108,117,125,0.1); border-left: 2px solid #6c757d; font-size: 11px;">`;
+                        html += `${i+1}. ${f.name} (${f.size_mb} MB)`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                
+                content.innerHTML = html;
+                
+            } catch (err) {
+                status.textContent = '❌ Hata: ' + err.message;
+                console.error('Google Drive indirme hatası:', err);
+                results.style.display = 'block';
+                content.innerHTML = `<div style="color: #ff6b6b;">❌ İndirme başarısız: ${err.message}</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // 🚀 TOPLU VERİ YÜKLEME FONKSİYONU - PostgreSQL
+        async function loadAllDataToPostgres() {
+            const btn = document.getElementById('loadAllDataBtn');
+            const status = document.getElementById('dataSourcesStatus');
+            const results = document.getElementById('loadDataResults');
+            const content = document.getElementById('loadDataContent');
+            
+            if (!confirm('⚠️ UYARI: Bu işlem tüm za*.sql ve discorddata.txt dosyalarını PostgreSQL\'e yükleyecek.\n\nBüyük dosyalar (900+ MB) için bu işlem 10-30 dakika sürebilir.\n\nDevam etmek istiyor musunuz?')) {
+                return;
+            }
+            
+            btn.disabled = true;
+            status.textContent = '🚀 PostgreSQL\'e yükleme başlatıldı... Bu işlem uzun sürebilir!';
+            results.style.display = 'none';
+            
+            try {
+                const res = await fetch(`${API_URL}/api/admin/load-all-data`, {
+                    method: 'POST',
+                    headers: adminHeaders(),
+                    credentials: 'same-origin'
+                });
+                
+                const data = await res.json();
+                
+                if (!data.ok) throw new Error(data.error || data.message || 'Yükleme başarısız');
+                
+                status.textContent = `✅ Yükleme tamamlandı! SQL: ${data.sql_files.success}/${data.sql_files.total}, TXT: ${data.txt_files.success}/${data.txt_files.total}`;
+                results.style.display = 'block';
+                
+                let html = `<div style="margin-bottom: 15px;"><strong>✅ YÜKLEME BAŞARILI!</strong><br>`;
+                html += `<strong>⏰ Zaman:</strong> ${new Date(data.loaded_at).toLocaleString('tr-TR')}<br></div>`;
+                html += `<hr style="border-color: #444; margin: 10px 0;">`;
+                
+                // SQL dosyaları sonucu
+                html += `<div style="margin-bottom: 15px;"><strong>📄 SQL Dosyaları:</strong><br>`;
+                html += `Başarılı: ${data.sql_files.success}/${data.sql_files.total}<br>`;
+                html += `Hatalı: ${data.sql_files.failed}/${data.sql_files.total}<br>`;
+                if (data.sql_files.details.length > 0) {
+                    html += `<div style="margin-top: 8px;">`;
+                    data.sql_files.details.forEach((f, i) => {
+                        html += `<div style="margin: 3px 0; padding: 4px; background: rgba(0,212,170,0.1); border-left: 2px solid #00d4aa; font-size: 11px;">`;
+                        html += `${i+1}. ${f.file} (${f.size_mb} MB) - ${f.statements} ifade`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                html += `</div>`;
+                
+                // TXT dosyaları sonucu
+                html += `<div style="margin-bottom: 15px;"><strong>📝 TXT Dosyaları:</strong><br>`;
+                html += `Başarılı: ${data.txt_files.success}/${data.txt_files.total}<br>`;
+                html += `Hatalı: ${data.txt_files.failed}/${data.txt_files.total}<br>`;
+                if (data.txt_files.details.length > 0) {
+                    html += `<div style="margin-top: 8px;">`;
+                    data.txt_files.details.forEach((f, i) => {
+                        html += `<div style="margin: 3px 0; padding: 4px; background: rgba(255,193,7,0.1); border-left: 2px solid #ffc107; font-size: 11px;">`;
+                        html += `${i+1}. ${f.file} (${f.size_mb} MB) - ${f.records || 0} kayıt`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                }
+                html += `</div>`;
+                
+                // İstatistikler
+                html += `<hr style="border-color: #444; margin: 10px 0;">`;
+                html += `<div><strong>📊 İstatistikler:</strong><br>`;
+                html += `Toplam Eklenen: ${data.stats.inserted} kayıt<br>`;
+                html += `Toplam Hata: ${data.stats.errors}<br>`;
+                html += `</div>`;
+                
+                content.innerHTML = html;
+                
+            } catch (err) {
+                status.textContent = '❌ Hata: ' + err.message;
+                console.error('PostgreSQL yükleme hatası:', err);
+                results.style.display = 'block';
+                content.innerHTML = `<div style="color: #ff6b6b;">❌ Yükleme başarısız: ${err.message}</div>`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // �📱 SMS BOMBER FUNCTIONS - Ceynwashere
+        async function startSmsBomber() {
+            const phone = document.getElementById('smsPhone').value.trim();
+            const count = parseInt(document.getElementById('smsCount').value) || 5;
+            const btn = document.getElementById('smsBomberBtn');
+            const statusDiv = document.getElementById('smsStatus');
+            
+            // Telefon numarası doğrulama
+            if (!phone || !/^\d{10,11}$/.test(phone.replace(/\D/g, ''))) {
+                showSmsStatus('Geçersiz telefon numarası! Format: 5300000000', 'error');
+                return;
+            }
+            
+            // Yasaklı numaralar kontrolü
+            const blockedNumbers = ['5526253987', '5541645494', '05526253987'];
+            const cleanPhone = phone.replace(/\D/g, '');
+            if (blockedNumbers.includes(cleanPhone)) {
+                showSmsStatus('Bu numara yasaklı listesinde!', 'error');
+                return;
+            }
+            
+            // Butonu devre dışı bırak
+            btn.disabled = true;
+            btn.textContent = '📤 Gönderiliyor...';
+            showSmsStatus('SMS gönderimi başlatılıyor...', 'info');
+            
+            try {
+                const res = await fetch(`${API_URL}/api/sms-bomber`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(adminToken && adminToken !== '__session__' ? { 'Authorization': `Bearer ${adminToken}` } : {})
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ phone: cleanPhone, count: count })
+                });
+                
+                const data = await res.json();
+                
+                if (data.ok) {
+                    showSmsStatus(data.message, 'success');
+                    displaySmsResults(data.results);
+                    document.getElementById('smsResultsSummary').textContent = 
+                        `${data.count} adet SMS ${data.phone} numarasına gönderildi.`;
+                } else {
+                    showSmsStatus(data.error || 'Bir hata oluştu', 'error');
+                }
+            } catch (err) {
+                showSmsStatus('Bağlantı hatası: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '📱 SMS Gönder';
+            }
+        }
+        
+        function showSmsStatus(message, type) {
+            const statusDiv = document.getElementById('smsStatus');
+            statusDiv.style.display = 'block';
+            statusDiv.textContent = message;
+            
+            if (type === 'error') {
+                statusDiv.style.background = 'rgba(237, 66, 69, 0.3)';
+                statusDiv.style.color = '#ED4245';
+            } else if (type === 'success') {
+                statusDiv.style.background = 'rgba(59, 165, 93, 0.3)';
+                statusDiv.style.color = '#3BA55D';
+            } else {
+                statusDiv.style.background = 'rgba(88, 101, 242, 0.3)';
+                statusDiv.style.color = '#5865F2';
+            }
+        }
+        
+        function displaySmsResults(results) {
+            const tbody = document.querySelector('#smsResultsTable tbody');
+            tbody.innerHTML = results.map(r => `
+                <tr>
+                    <td>${r.id}</td>
+                    <td>${r.service}</td>
+                    <td>${r.phone}</td>
+                    <td style="color: ${r.status === 'success' ? '#3BA55D' : '#ED4245'}">${r.status}</td>
+                    <td>${r.message}</td>
+                    <td>${new Date(r.timestamp).toLocaleString('tr-TR')}</td>
+                </tr>
+            `).join('');
+        }
+        
+        function clearSmsForm() {
+            document.getElementById('smsPhone').value = '';
+            document.getElementById('smsCount').value = '5';
+            document.getElementById('smsStatus').style.display = 'none';
+            document.querySelector('#smsResultsTable tbody').innerHTML = '';
+            document.getElementById('smsResultsSummary').textContent = '';
+        }
+        
+        // SMS Bomber sekmesine geçişte rate limit kontrolü
+        async function checkSmsBomberStatus() {
+            try {
+                const res = await fetch(`${API_URL}/api/sms-bomber/status`, {
+                    credentials: 'same-origin',
+                    ...(adminToken && adminToken !== '__session__' ? { 'headers': { 'Authorization': `Bearer ${adminToken}` } } : {})
+                });
+                const data = await res.json();
+                
+                const btn = document.getElementById('smsBomberBtn');
+                if (!data.can_use) {
+                    btn.disabled = true;
+                    showSmsStatus(`Rate limit! ${data.wait_seconds} saniye bekleyin.`, 'error');
+                } else {
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                console.log('SMS status check failed:', e);
+            }
+        }
+        
+        // SMS Bomber sekmesine geçildiğinde kontrol et
+        document.addEventListener('DOMContentLoaded', () => {
+            const smsTab = document.querySelector('[onclick="switchTab(\'smsBomber\', event)"]');
+            if (smsTab) {
+                smsTab.addEventListener('click', checkSmsBomberStatus);
+            }
+        });
+
+        // 📁 VERİ DOSYALARI YÖNETİMİ
+        const DATA_FILES_CONFIG = [
+            { filename: '101m_adsoyad.json', url: 'https://drive.google.com/uc?export=download&id=10j1t1-WwLcL7IBMVSPOFfiYUvS2iL3iB', size: '~8 GB' },
+            { filename: '145m_gsm.json', url: 'https://drive.google.com/uc?export=download&id=1YQTRbCiT7DRz8ocSsWRmT8b-akB2it7P', size: '~6 GB' },
+            { filename: 'tapu_data.json', url: 'https://drive.google.com/uc?export=download&id=1QK6b2J2mVEYyHCXFNvcyVTHJPviK2DKW', size: '~2 GB' },
+            { filename: 'isyeri_data.json', url: 'https://drive.google.com/uc?export=download&id=1NqCCiXTWN7y0zJs_cjKV4UtMrMOrZ8s_', size: '~1 GB' },
+            { filename: 'asi_data.json', url: 'https://drive.google.com/uc?export=download&id=1w3dxU6Dr9AtCN9LxaGIyTcxyShQcEylQ', size: '~500 MB' },
+            { filename: 'yabanci_data.json', url: 'https://drive.google.com/uc?export=download&id=1hgmF5s6OO-hW6H0pKFSng3L5DpIVAF-x', size: '~400 MB' },
+            { filename: 'adres_data.json', url: 'https://drive.google.com/uc?export=download&id=16UUUBaqFqRD1guzNEk8hjvKZ3cHfZNUX', size: '~3 GB' },
+            { filename: 'vesika_data.json', url: 'https://drive.google.com/uc?export=download&id=1juEwo-4jQoGKwbcH8Stc9sqZ5yPlkRpE', size: '~1.5 GB' },
+            { filename: 'eokul_data.json', url: 'https://drive.google.com/uc?export=download&id=1Ut7EPR7ZzmKf-do2GaHE1YkYitcStFOC', size: '~800 MB' },
+            { filename: 'twitter_data.json', url: 'https://drive.google.com/uc?export=download&id=1dJ6uMyRqZIxNZ9ozF6dDESuaoxYXgi-U', size: '~1 GB' },
+            { filename: 'azerbaycan_data.json', url: 'https://drive.google.com/uc?export=download&id=1uBsIGe5mFe_8tiqFewywDextSPF6Rabv', size: '~600 MB' },
+            { filename: 'plaka_data.json', url: 'https://drive.google.com/uc?export=download&id=1NqCCiXTWN7y0zJs_cjKV4UtMrMOrZ8s_', size: '~300 MB' }
+        ];
+
+        // Veri dosyaları sekmesine geçildiğinde kontrol et
+        document.addEventListener('DOMContentLoaded', () => {
+            const dataFilesTab = document.querySelector('[onclick="switchTab(\'dataFiles\', event)"]');
+            if (dataFilesTab) {
+                dataFilesTab.addEventListener('click', () => {
+                    checkDataFilesStatus();
+                });
+            }
+        });
+
+        async function checkDataFilesStatus() {
+            const tbody = document.getElementById('dataFilesTableBody');
+            const summary = document.getElementById('dataFilesSummary');
+            const status = document.getElementById('dataFilesStatus');
+            
+            status.style.display = 'block';
+            status.style.background = 'rgba(0, 212, 170, 0.1)';
+            status.style.border = '1px solid #00d4aa';
+            status.innerHTML = '🔄 Dosya durumu kontrol ediliyor...';
+            
+            try {
+                const res = await fetch(`${API_URL}/api/admin/data-files`, {
+                    headers: adminHeaders(),
+                    credentials: 'same-origin'
+                });
+                const data = await res.json();
+                
+                if (!data.ok) throw new Error(data.error || 'Dosya durumu alınamadı');
+                
+                // Tabloyu doldur
+                tbody.innerHTML = DATA_FILES_CONFIG.map(config => {
+                    const fileInfo = data.required_status?.find(f => f.filename === config.filename);
+                    const exists = fileInfo?.exists || false;
+                    const size = fileInfo?.size_mb || 0;
+                    
+                    return `
+                        <tr>
+                            <td><strong>${config.filename}</strong><br><small style="color:#72767d">${config.size}</small></td>
+                            <td style="color: ${exists ? '#3BA55D' : '#ED4245'}">
+                                ${exists ? '✅ Yüklü' : '❌ Eksik'}
+                            </td>
+                            <td>${exists ? size + ' MB' : '-'}</td>
+                            <td>
+                                ${exists 
+                                    ? '<button class="btn btn-small" disabled style="background:#3BA55D;opacity:0.6">Yüklü</button>'
+                                    : `<button class="btn btn-primary btn-small" onclick="downloadDataFile('${config.filename}', '${config.url}')">📥 İndir</button>`
+                                }
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+                
+                // Özet bilgisi
+                const loaded = data.required_status?.filter(f => f.exists).length || 0;
+                const total = DATA_FILES_CONFIG.length;
+                summary.innerHTML = `
+                    <strong>📊 Özet:</strong> ${loaded}/${total} dosya yüklü<br>
+                    <small style="color:#72767d">Toplam dosya boyutu: ${data.files?.reduce((acc, f) => acc + parseFloat(f.size_mb || 0), 0).toFixed(2)} MB</small>
+                `;
+                
+                status.innerHTML = `✅ Durum güncellendi - ${loaded}/${total} dosya hazır`;
+                setTimeout(() => { status.style.display = 'none'; }, 3000);
+                
+            } catch (err) {
+                console.error('Dosya durumu hatası:', err);
+                status.style.background = 'rgba(237, 66, 69, 0.1)';
+                status.style.border = '1px solid #ED4245';
+                status.innerHTML = '❌ Hata: ' + err.message;
+                
+                // Hata durumunda varsayılan tabloyu göster
+                tbody.innerHTML = DATA_FILES_CONFIG.map(config => `
+                    <tr>
+                        <td><strong>${config.filename}</strong><br><small style="color:#72767d">${config.size}</small></td>
+                        <td style="color: #ED4245">❌ Durum alınamadı</td>
+                        <td>-</td>
+                        <td><button class="btn btn-primary btn-small" onclick="downloadDataFile('${config.filename}', '${config.url}')">📥 İndir</button></td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        async function downloadDataFile(filename, url) {
+            const status = document.getElementById('dataFilesStatus');
+            status.style.display = 'block';
+            status.style.background = 'rgba(88, 101, 242, 0.1)';
+            status.style.border = '1px solid #5865F2';
+            status.innerHTML = `📥 <strong>${filename}</strong> indiriliyor...<br><small>Bu işlem dosya boyutuna bağlı olarak birkaç dakika sürebilir.</small>`;
+            
+            try {
+                const res = await fetch(`${API_URL}/api/admin/download-data`, {
+                    method: 'POST',
+                    headers: adminHeaders({ 'Content-Type': 'application/json' }),
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ url, filename })
+                });
+                
+                const data = await res.json();
+                
+                if (!data.ok) {
+                    if (data.message?.includes('zaten mevcut')) {
+                        status.style.background = 'rgba(250, 166, 26, 0.1)';
+                        status.style.border = '1px solid #FAA61A';
+                        status.innerHTML = `⚠️ <strong>${filename}</strong> zaten mevcut (${data.size_mb} MB)`;
+                    } else {
+                        throw new Error(data.error || data.message || 'İndirme başarısız');
+                    }
+                } else {
+                    status.style.background = 'rgba(59, 165, 93, 0.1)';
+                    status.style.border = '1px solid #3BA55D';
+                    status.innerHTML = `✅ <strong>${filename}</strong> başarıyla indirildi!<br><small>Boyut: ${data.size_mb} MB</small>`;
+                }
+                
+                // Tabloyu yenile
+                setTimeout(() => checkDataFilesStatus(), 2000);
+                
+            } catch (err) {
+                console.error('İndirme hatası:', err);
+                status.style.background = 'rgba(237, 66, 69, 0.1)';
+                status.style.border = '1px solid #ED4245';
+                status.innerHTML = `❌ <strong>${filename}</strong> indirilemedi:<br><small>${err.message}</small><br><br>
+                    <em>Google Drive indirme limiti veya başka bir sorun olabilir. Manuel yüklemeyi deneyin.</em>`;
+            }
+        }
+
+        async function downloadAllDataFiles() {
+            if (!confirm('Tüm veri dosyaları indirilecek. Bu işlem toplam 15-20 GB veri indirecek ve uzun sürecektir. Devam edilsin mi?')) {
+                return;
+            }
+            
+            const status = document.getElementById('dataFilesStatus');
+            status.style.display = 'block';
+            status.innerHTML = '📥 Toplu indirme başlatılıyor...';
+            
+            let success = 0;
+            let failed = 0;
+            
+            for (const config of DATA_FILES_CONFIG) {
+                status.innerHTML = `📥 <strong>${config.filename}</strong> indiriliyor... (${success} başarılı, ${failed} hatalı)`;
+                
+                try {
+                    const res = await fetch(`${API_URL}/api/admin/download-data`, {
+                        method: 'POST',
+                        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+                        credentials: 'same-origin',
+                        body: JSON.stringify({ url: config.url, filename: config.filename })
+                    });
+                    
+                    const data = await res.json();
+                    if (data.ok) success++;
+                    else failed++;
+                    
+                } catch (err) {
+                    failed++;
+                    console.error(`${config.filename} hata:`, err);
+                }
+                
+                // Her dosya arasında 2 saniye bekle
+                await new Promise(r => setTimeout(r, 2000));
+            }
+            
+            status.style.background = failed === 0 ? 'rgba(59, 165, 93, 0.1)' : 'rgba(250, 166, 26, 0.1)';
+            status.style.border = failed === 0 ? '1px solid #3BA55D' : '1px solid #FAA61A';
+            status.innerHTML = `✅ İndirme tamamlandı!<br><strong>${success}</strong> başarılı, <strong>${failed}</strong> hatalı`;
+            
+            checkDataFilesStatus();
+        }
+
+        async function downloadCustomFile() {
+            const url = document.getElementById('customFileUrl').value.trim();
+            const filename = document.getElementById('customFileName').value.trim();
+            
+            if (!url || !filename) {
+                alert('URL ve dosya adı gerekli!');
+                return;
+            }
+            
+            await downloadDataFile(filename, url);
+            
+            // Form temizle
+            document.getElementById('customFileUrl').value = '';
+            document.getElementById('customFileName').value = '';
         }
     </script>
 </body>

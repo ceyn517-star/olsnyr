@@ -1,259 +1,355 @@
 /**
  * Zagros Database Layer
- * PostgreSQL sorgu katmanı - server.js'deki dosya tarama fonksiyonlarının DB karşılıkları
+ * SQLite ve PostgreSQL sorgu katmanı
  */
 
+import Database from 'better-sqlite3';
 import pg from 'pg';
+import path from 'path';
+import fs from 'fs';
+const { Pool } = pg;
 
+let db = null;
 let pool = null;
+let isPostgres = false;
 
-export function initDB(databaseUrl) {
-  pool = new pg.Pool({
-    connectionString: databaseUrl,
-    ssl: databaseUrl.includes('localhost') || databaseUrl.includes('127.0.0.1')
-      ? false
-      : { rejectUnauthorized: false },
-    max: 10,
-    min: 2,
-    idleTimeoutMillis: 60000,
-    connectionTimeoutMillis: 20000,
-    statement_timeout: 30000,
-    query_timeout: 30000,
-    application_name: 'zagros-osint'
-  });
-  pool.on('error', (err) => console.error('[DB] Pool error:', err.message));
-  pool.on('connect', () => console.log('[DB] New connection established'));
-  pool.on('remove', () => console.log('[DB] Connection removed'));
-  return pool;
+// DATABASE_URL kontrolü - PostgreSQL mi SQLite mı?
+const DATABASE_URL = process.env.DATABASE_URL || './zagros.db';
+
+export function initDB(databasePath) {
+  // PostgreSQL connection string mi kontrol et
+  if (DATABASE_URL.startsWith('postgresql://') || DATABASE_URL.startsWith('postgres://')) {
+    return initPostgreSQL(DATABASE_URL);
+  }
+  // SQLite
+  return initSQLite(databasePath || DATABASE_URL);
 }
 
-export function getPool() { return pool; }
-export function isDBReady() { return !!pool; }
+function initPostgreSQL(connectionString) {
+  try {
+    pool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false }
+    });
+    isPostgres = true;
+    console.log('[DB] PostgreSQL bağlantısı kuruldu');
+    
+    // Test connection
+    pool.query('SELECT NOW()', (err, res) => {
+      if (err) {
+        console.error('[DB] PostgreSQL test hatası:', err.message);
+      } else {
+        console.log('[DB] PostgreSQL bağlantısı aktif');
+      }
+    });
+    
+    return pool;
+  } catch (err) {
+    console.error('[DB] PostgreSQL bağlantı hatası:', err.message);
+    // Fallback to SQLite
+    console.log('[DB] SQLite\'a fallback yapılıyor...');
+    return initSQLite('./zagros.db');
+  }
+}
+
+function initSQLite(databasePath) {
+  try {
+    // Ensure directory exists
+    import('fs').then(fs => {
+      import('path').then(path => {
+        const dir = path.dirname(databasePath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+      });
+    });
+    
+    db = new Database(databasePath);
+    db.pragma('journal_mode = WAL');
+    isPostgres = false;
+    console.log('[DB] SQLite bağlantısı kuruldu:', databasePath);
+    return db;
+  } catch (err) {
+    console.error('[DB] SQLite bağlantı hatası:', err.message);
+    return null;
+  }
+}
+
+export function getPool() { return isPostgres ? pool : db; }
+export function isDBReady() { return isPostgres ? !!pool : !!db; }
+export function isPostgreSQL() { return isPostgres; }
+
+// SQL exec fonksiyonu - PostgreSQL veya SQLite
+export async function execSql(sql) {
+  if (isPostgres && pool) {
+    try {
+      await pool.query(sql);
+      return { success: true };
+    } catch (err) {
+      throw err;
+    }
+  }
+  
+  if (!db) throw new Error('Database not initialized');
+  try {
+    db.exec(sql);
+    return { success: true };
+  } catch (err) {
+    throw err;
+  }
+}
 
 // ============= DISCORD ID İLE ARAMA =============
 export async function dbSearchByDiscordId(discordId) {
-  if (!pool) return [];
   const needle = String(discordId);
-
-  // users tablosundan - TÜM ALANLAR
-  const usersRes = await pool.query(
-    `SELECT discord_id, username, discriminator, email, avatar_hash, 
-            registration_ip, last_ip, phone, bio, premium, verified, 
-            connections, source, created_at, last_login, mfa_enabled, 
-            locale, nsfw_allowed, public_flags, flags, 
-            high_quality, email_verified
-     FROM users WHERE discord_id = $1 LIMIT 50`,
-    [needle]
-  );
-
-  // query_logs tablosundan
-  const logsRes = await pool.query(
-    `SELECT discord_id, email, ip, username, avatar_hash, connections, source, created_at
-     FROM query_logs WHERE discord_id = $1 LIMIT 50`,
-    [needle]
-  );
-
-  // guilds tablosundan kullanıcının bulunduğu sunucular
-  const guildsRes = await pool.query(
-    `SELECT g.guild_id, g.guild_name, g.guild_icon, g.guild_banner, g.guild_description,
-            g.member_count, g.online_count, g.owner_id, g.created_at as guild_created_at
-     FROM user_guilds ug
-     JOIN guilds g ON ug.guild_id = g.guild_id
-     WHERE ug.discord_id = $1 LIMIT 100`,
-    [needle]
-  );
-
-  const results = [];
-
-  for (const row of usersRes.rows) {
-    results.push({
+  
+  // PostgreSQL mod
+  if (isPostgres && pool) {
+    try {
+      const usersRes = await pool.query(
+        `SELECT discord_id, username, discriminator, email, avatar_hash, 
+                registration_ip, last_ip, phone, bio, premium, verified, 
+                connections, source, created_at, last_login, mfa_enabled, 
+                locale, nsfw_allowed, public_flags, flags, 
+                high_quality, email_verified
+         FROM users WHERE discord_id = $1 LIMIT 50`,
+        [needle]
+      );
+      
+      const guildsRes = await pool.query(
+        `SELECT g.guild_id, g.guild_name, g.guild_icon, g.guild_banner, g.guild_description,
+                g.member_count, g.online_count, g.owner_id, g.created_at as guild_created_at
+         FROM user_guilds ug
+         JOIN guilds g ON ug.guild_id = g.guild_id
+         WHERE ug.discord_id = $1 LIMIT 100`,
+        [needle]
+      );
+      
+      return usersRes.rows.map(row => ({
+        discord_id: row.discord_id,
+        username: row.username,
+        email: row.email,
+        ip: row.registration_ip || row.last_ip,
+        avatar_hash: row.avatar_hash,
+        phone: row.phone,
+        connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
+        source: row.source || 'database',
+        guilds: guildsRes.rows.map(g => ({
+          id: g.guild_id,
+          name: g.guild_name,
+          icon: g.guild_icon,
+          banner: g.guild_banner,
+          member_count: g.member_count,
+        }))
+      }));
+    } catch (err) {
+      console.warn('[DB] PostgreSQL Discord ID search error:', err.message);
+      return [];
+    }
+  }
+  
+  // SQLite mod
+  if (!db) return [];
+  
+  try {
+    const usersStmt = db.prepare(
+      `SELECT discord_id, username, email, avatar_hash, 
+              registration_ip, last_ip, phone, connections, source
+       FROM users WHERE discord_id = ? LIMIT 50`
+    );
+    const userRows = usersStmt.all(needle);
+    
+    const guildsStmt = db.prepare(
+      `SELECT g.guild_id, g.guild_name, g.guild_icon, g.guild_banner
+       FROM user_guilds ug
+       JOIN guilds g ON ug.guild_id = g.guild_id
+       WHERE ug.discord_id = ? LIMIT 100`
+    );
+    const guildsRows = guildsStmt.all(needle);
+    
+    return userRows.map(row => ({
       discord_id: row.discord_id,
       username: row.username,
-      discriminator: row.discriminator,
       email: row.email,
       ip: row.registration_ip || row.last_ip,
-      registration_ip: row.registration_ip,
-      last_ip: row.last_ip,
       avatar_hash: row.avatar_hash,
-      bio: row.bio,
-      premium: row.premium,
-      verified: row.verified,
-      phone: row.phone,
-      mfa_enabled: row.mfa_enabled,
-      locale: row.locale,
-      nsfw_allowed: row.nsfw_allowed,
-      public_flags: row.public_flags,
-      flags: row.flags,
-      high_quality: row.high_quality,
-      email_verified: row.email_verified,
-      created_at: row.created_at,
-      last_login: row.last_login,
-      connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
+      connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : [],
       source: row.source || 'database',
-      guilds: guildsRes.rows.map(g => ({
+      guilds: guildsRows.map(g => ({
         id: g.guild_id,
         name: g.guild_name,
         icon: g.guild_icon,
         banner: g.guild_banner,
-        description: g.guild_description,
-        member_count: g.member_count,
-        online_count: g.online_count,
-        owner_id: g.owner_id,
-        created_at: g.guild_created_at
       }))
-    });
+    }));
+  } catch (err) {
+    console.warn('[DB] Discord ID search error:', err.message);
+    return [];
   }
-
-  for (const row of logsRes.rows) {
-    results.push({
-      discord_id: row.discord_id,
-      email: row.email,
-      ip: row.ip,
-      username: row.username,
-      avatar_hash: row.avatar_hash,
-      created_at: row.created_at,
-      connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
-      source: row.source || 'query_logs'
-    });
-  }
-
-  return results;
 }
 
 // ============= GUILD'LER - Discord ID ile =============
 export async function dbGetUserGuilds(discordId) {
-  if (!pool) return [];
-  const res = await pool.query(
-    `SELECT DISTINCT guild_id FROM user_guilds WHERE discord_id = $1`,
-    [String(discordId)]
-  );
-  return res.rows.map(r => r.guild_id);
+  if (!db) return [];
+  try {
+    const stmt = db.prepare(`SELECT DISTINCT guild_id FROM user_guilds WHERE discord_id = ?`);
+    const rows = stmt.all(String(discordId));
+    return rows.map(r => r.guild_id);
+  } catch (err) {
+    console.warn('[DB] Get user guilds error:', err.message);
+    return [];
+  }
 }
 
 // ============= EMAIL İLE ARAMA =============
 export async function dbSearchByEmail(email) {
-  if (!pool) return [];
+  if (!db) return [];
   const needle = String(email).toLowerCase();
 
-  const usersRes = await pool.query(
-    `SELECT discord_id, username, discriminator, email, avatar_hash,
-            registration_ip, last_ip, phone, bio, premium, verified,
-            connections, source, created_at, last_login, mfa_enabled,
-            locale, public_flags, flags
-     FROM users WHERE LOWER(email) = $1 LIMIT 100`,
-    [needle]
-  );
+  try {
+    // users tablosunda email ile ara
+    const usersStmt = db.prepare(
+      `SELECT discord_id, username, discriminator, email, avatar_hash, 
+              registration_ip, last_ip, phone, bio, premium, verified, 
+              connections, source, created_at, last_login, mfa_enabled, 
+              locale, nsfw_allowed, public_flags, flags, 
+              high_quality, email_verified
+       FROM users WHERE LOWER(email) = ? LIMIT 50`
+    );
+    const usersRows = usersStmt.all(needle);
 
-  const logsRes = await pool.query(
-    `SELECT discord_id, email, ip, username, avatar_hash, connections, source, created_at
-     FROM query_logs WHERE LOWER(email) = $1 LIMIT 100`,
-    [needle]
-  );
+    // query_logs tablosunda email ile ara
+    const logsStmt = db.prepare(
+      `SELECT discord_id, email, ip, username, avatar_hash, connections, source, created_at
+       FROM query_logs WHERE LOWER(email) = ? LIMIT 50`
+    );
+    const logsRows = logsStmt.all(needle);
 
-  const results = [];
-  for (const row of usersRes.rows) {
-    results.push({
-      discord_id: row.discord_id,
-      email: row.email,
-      ip: row.registration_ip || row.last_ip,
-      registration_ip: row.registration_ip,
-      last_ip: row.last_ip,
-      username: row.username,
-      discriminator: row.discriminator,
-      avatar_hash: row.avatar_hash,
-      bio: row.bio,
-      premium: row.premium,
-      verified: row.verified,
-      phone: row.phone,
-      mfa_enabled: row.mfa_enabled,
-      locale: row.locale,
-      public_flags: row.public_flags,
-      flags: row.flags,
-      created_at: row.created_at,
-      last_login: row.last_login,
-      connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
-      source: row.source || 'database'
-    });
+    const results = [];
+
+    for (const row of usersRows) {
+      results.push({
+        discord_id: row.discord_id,
+        username: row.username,
+        discriminator: row.discriminator,
+        email: row.email,
+        ip: row.registration_ip || row.last_ip,
+        registration_ip: row.registration_ip,
+        last_ip: row.last_ip,
+        avatar_hash: row.avatar_hash,
+        bio: row.bio,
+        premium: row.premium,
+        verified: row.verified,
+        phone: row.phone,
+        mfa_enabled: row.mfa_enabled,
+        locale: row.locale,
+        nsfw_allowed: row.nsfw_allowed,
+        public_flags: row.public_flags,
+        flags: row.flags,
+        high_quality: row.high_quality,
+        email_verified: row.email_verified,
+        created_at: row.created_at,
+        last_login: row.last_login,
+        connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
+        source: row.source || 'database'
+      });
+    }
+
+    for (const row of logsRows) {
+      if (!results.find(r => r.discord_id === row.discord_id)) {
+        results.push({
+          discord_id: row.discord_id,
+          email: row.email,
+          ip: row.ip,
+          username: row.username,
+          avatar_hash: row.avatar_hash,
+          created_at: row.created_at,
+          connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
+          source: row.source || 'query_logs'
+        });
+      }
+    }
+
+    return results;
+  } catch (err) {
+    console.warn('[DB] Email search error:', err.message);
+    return [];
   }
-  for (const row of logsRes.rows) {
-    results.push({
-      discord_id: row.discord_id,
-      email: row.email,
-      ip: row.ip,
-      username: row.username,
-      avatar_hash: row.avatar_hash,
-      created_at: row.created_at,
-      connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
-      source: row.source || 'query_logs'
-    });
-  }
-  return results;
 }
 
 // ============= IP İLE ARAMA =============
 export async function dbSearchByIp(ip) {
-  if (!pool) return [];
+  if (!db) return [];
   const needle = String(ip);
 
-  const res = await pool.query(
-    `SELECT discord_id, username, email, avatar_hash, registration_ip, last_ip, source
-     FROM users 
-     WHERE registration_ip = $1 OR last_ip = $1
-     LIMIT 100`,
-    [needle]
-  );
+  try {
+    const usersStmt = db.prepare(
+      `SELECT discord_id, username, email, avatar_hash, registration_ip, last_ip, source
+       FROM users 
+       WHERE registration_ip = ? OR last_ip = ?
+       LIMIT 100`
+    );
+    const usersRows = usersStmt.all(needle, needle);
 
-  const logsRes = await pool.query(
-    `SELECT discord_id, email, ip, username, avatar_hash, source
-     FROM query_logs WHERE ip = $1 LIMIT 100`,
-    [needle]
-  );
+    const logsStmt = db.prepare(
+      `SELECT discord_id, email, ip, username, avatar_hash, source
+       FROM query_logs WHERE ip = ? LIMIT 100`
+    );
+    const logsRows = logsStmt.all(needle);
 
-  const results = [];
-  for (const row of [...res.rows, ...logsRes.rows]) {
-    results.push({
-      discord_id: row.discord_id,
-      email: row.email,
-      ip: row.ip || row.registration_ip || row.last_ip,
-      username: row.username,
-      avatar_hash: row.avatar_hash,
-      source: row.source || 'database'
-    });
+    const results = [];
+    for (const row of [...usersRows, ...logsRows]) {
+      results.push({
+        discord_id: row.discord_id,
+        email: row.email,
+        ip: row.ip || row.registration_ip || row.last_ip,
+        username: row.username,
+        avatar_hash: row.avatar_hash,
+        source: row.source || 'database'
+      });
+    }
+    return results;
+  } catch (err) {
+    console.warn('[DB] IP search error:', err.message);
+    return [];
   }
-  return results;
 }
 
 // ============= GUILD ÜYELERI =============
 export async function dbSearchGuildMembers(guildId) {
-  if (!pool) return [];
+  if (!db) return [];
 
-  const res = await pool.query(
-    `SELECT ug.discord_id, u.username, u.email, u.avatar_hash, 
-            u.registration_ip, u.last_ip, u.phone, u.connections, u.source
-     FROM user_guilds ug
-     LEFT JOIN LATERAL (
-       SELECT * FROM users WHERE discord_id = ug.discord_id LIMIT 1
-     ) u ON true
-     WHERE ug.guild_id = $1
-     LIMIT 500`,
-    [String(guildId)]
-  );
+  try {
+    // SQLite LATERAL JOIN desteklemez, subquery kullan
+    const stmt = db.prepare(
+      `SELECT ug.discord_id, u.username, u.email, u.avatar_hash, 
+              u.registration_ip, u.last_ip, u.phone, u.connections, u.source
+       FROM user_guilds ug
+       LEFT JOIN users u ON u.discord_id = ug.discord_id
+       WHERE ug.guild_id = ?
+       LIMIT 500`
+    );
+    const rows = stmt.all(String(guildId));
 
-  return res.rows.map(row => ({
-    discord_id: row.discord_id,
-    username: row.username,
-    email: row.email,
-    avatar_hash: row.avatar_hash,
-    ip: row.registration_ip || row.last_ip,
-    phone: row.phone,
-    connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
-    source: row.source || 'database'
-  }));
+    return rows.map(row => ({
+      discord_id: row.discord_id,
+      username: row.username,
+      email: row.email,
+      avatar_hash: row.avatar_hash,
+      ip: row.registration_ip || row.last_ip,
+      phone: row.phone,
+      connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
+      source: row.source || 'database'
+    }));
+  } catch (err) {
+    console.warn('[DB] Guild members error:', err.message);
+    return [];
+  }
 }
 
 // ============= TÜM GUILD'LER LİSTESİ =============
 export async function dbGetAllGuilds(options = {}) {
-  if (!pool) return { guilds: [], total: 0 };
+  if (!db) return { guilds: [], total: 0 };
 
   const {
     limit = 200,
@@ -264,231 +360,919 @@ export async function dbGetAllGuilds(options = {}) {
   const limitVal = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
   const offsetVal = Math.max(parseInt(offset, 10) || 0, 0);
 
-  const filters = [];
-  const params = [];
-  if (searchTerm) {
-    params.push(`%${searchTerm}%`);
-    const nameIdx = params.length;
-    params.push(`%${searchTerm}%`);
-    const idIdx = params.length;
-    filters.push(`(COALESCE(gc.name,'') ILIKE $${nameIdx} OR base.guild_id ILIKE $${idIdx})`);
+  try {
+    // SQLite CTE ve ARRAY_AGG desteklemez, basit versiyon kullan
+    let listQuery, countQuery;
+    
+    if (searchTerm) {
+      const searchPattern = `%${searchTerm.toLowerCase()}%`;
+      listQuery = db.prepare(`
+        SELECT ug.guild_id, COUNT(DISTINCT ug.discord_id) as member_count,
+               gc.name, gc.icon, gc.banner, gc.description, gc.updated_at
+        FROM user_guilds ug
+        LEFT JOIN guild_cache gc ON gc.guild_id = ug.guild_id
+        WHERE (LOWER(COALESCE(gc.name,'')) LIKE ? OR LOWER(ug.guild_id) LIKE ?)
+        GROUP BY ug.guild_id
+        ORDER BY member_count DESC
+        LIMIT ? OFFSET ?
+      `);
+      countQuery = db.prepare(`
+        SELECT COUNT(DISTINCT ug.guild_id) as count
+        FROM user_guilds ug
+        LEFT JOIN guild_cache gc ON gc.guild_id = ug.guild_id
+        WHERE (LOWER(COALESCE(gc.name,'')) LIKE ? OR LOWER(ug.guild_id) LIKE ?)
+      `);
+      
+      const listRes = listQuery.all(searchPattern, searchPattern, limitVal, offsetVal);
+      const countRes = countQuery.get(searchPattern, searchPattern);
+      
+      return {
+        guilds: (listRes || []).map(row => ({
+          id: row.guild_id,
+          name: row.name || null,
+          icon: row.icon || null,
+          banner: row.banner || null,
+          description: row.description || null,
+          member_count: parseInt(row.member_count, 10),
+          sample_member_ids: [],
+          metadata_source: (row.name || row.icon || row.banner || row.description) ? 'database' : null,
+          metadata_updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null
+        })),
+        total: Number(countRes?.count || 0)
+      };
+    } else {
+      listQuery = db.prepare(`
+        SELECT ug.guild_id, COUNT(DISTINCT ug.discord_id) as member_count,
+               gc.name, gc.icon, gc.banner, gc.description, gc.updated_at
+        FROM user_guilds ug
+        LEFT JOIN guild_cache gc ON gc.guild_id = ug.guild_id
+        GROUP BY ug.guild_id
+        ORDER BY member_count DESC
+        LIMIT ? OFFSET ?
+      `);
+      countQuery = db.prepare('SELECT COUNT(DISTINCT guild_id) as count FROM user_guilds');
+      
+      const listRes = listQuery.all(limitVal, offsetVal);
+      const countRes = countQuery.get();
+      
+      return {
+        guilds: (listRes || []).map(row => ({
+          id: row.guild_id,
+          name: row.name || null,
+          icon: row.icon || null,
+          banner: row.banner || null,
+          description: row.description || null,
+          member_count: parseInt(row.member_count, 10),
+          sample_member_ids: [],
+          metadata_source: (row.name || row.icon || row.banner || row.description) ? 'database' : null,
+          metadata_updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null
+        })),
+        total: Number(countRes?.count || 0)
+      };
+    }
+  } catch (err) {
+    console.warn('[DB] Get all guilds error:', err.message);
+    return { guilds: [], total: 0 };
   }
-  const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-
-  const listQuery = `
-    WITH base AS (
-      SELECT ug.guild_id,
-             COUNT(DISTINCT ug.discord_id) AS member_count,
-             ARRAY_AGG(DISTINCT ug.discord_id ORDER BY ug.discord_id)
-               FILTER (WHERE ug.discord_id IS NOT NULL) AS sample_member_ids
-      FROM user_guilds ug
-      GROUP BY ug.guild_id
-    )
-    SELECT base.guild_id, base.member_count, base.sample_member_ids,
-           gc.name, gc.icon, gc.banner, gc.description, gc.updated_at
-    FROM base
-    LEFT JOIN guild_cache gc ON gc.guild_id = base.guild_id
-    ${whereClause}
-    ORDER BY base.member_count DESC
-    LIMIT $${params.length + 1}
-    OFFSET $${params.length + 2}
-  `;
-
-  const countQuery = `
-    WITH base AS (
-      SELECT DISTINCT guild_id FROM user_guilds
-    )
-    SELECT COUNT(*) AS count
-    FROM base
-    LEFT JOIN guild_cache gc ON gc.guild_id = base.guild_id
-    ${whereClause}
-  `;
-
-  const [listRes, countRes] = await Promise.all([
-    pool.query(listQuery, [...params, limitVal, offsetVal]),
-    pool.query(countQuery, params)
-  ]);
-
-  return {
-    guilds: listRes.rows.map(row => ({
-      id: row.guild_id,
-      name: row.name || null,
-      icon: row.icon || null,
-      banner: row.banner || null,
-      description: row.description || null,
-      member_count: parseInt(row.member_count, 10),
-      sample_member_ids: (row.sample_member_ids || []).slice(0, 10),
-      metadata_source: (row.name || row.icon || row.banner || row.description) ? 'database' : null,
-      metadata_updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null
-    })),
-    total: Number(countRes.rows?.[0]?.count || 0)
-  };
 }
 
 export async function dbGetUsersByIds(discordIds = []) {
-  if (!pool || !discordIds?.length) return new Map();
+  if (!db || !discordIds?.length) return new Map();
   const uniqueIds = Array.from(new Set(discordIds.map(id => String(id).trim()).filter(Boolean)));
   if (!uniqueIds.length) return new Map();
 
-  const res = await pool.query(
-    `SELECT discord_id, username, avatar_hash, connections FROM users WHERE discord_id = ANY($1::varchar[])`,
-    [uniqueIds]
-  );
+  try {
+    // SQLite ANY() desteklemez, IN kullan
+    const placeholders = uniqueIds.map(() => '?').join(',');
+    const stmt = db.prepare(
+      `SELECT discord_id, username, avatar_hash, connections FROM users WHERE discord_id IN (${placeholders})`
+    );
+    const rows = stmt.all(...uniqueIds);
 
-  const map = new Map();
-  for (const row of res.rows) {
-    map.set(row.discord_id, {
-      id: row.discord_id,
-      username: row.username,
-      avatar_hash: row.avatar_hash,
-      connections: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || [])
-    });
+    const map = new Map();
+    for (const row of rows) {
+      map.set(row.discord_id, {
+        id: row.discord_id,
+        username: row.username,
+        avatar_hash: row.avatar_hash,
+        connections: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || [])
+      });
+    }
+    return map;
+  } catch (err) {
+    console.warn('[DB] Get users by IDs error:', err.message);
+    return new Map();
   }
-  return map;
 }
 
 // ============= IP İLE DİĞER DISCORD ID'LERİ BUL (Arkadaş Tespiti) =============
 export async function dbFindFriendsByIp(ip, excludeDiscordId) {
-  if (!pool || !ip) return [];
+  if (!db || !ip) return [];
 
-  const res = await pool.query(
-    `SELECT DISTINCT discord_id, username, avatar_hash
-     FROM users 
-     WHERE (registration_ip = $1 OR last_ip = $1) AND discord_id != $2
-     LIMIT 20`,
-    [ip, String(excludeDiscordId)]
-  );
+  try {
+    const stmt = db.prepare(
+      `SELECT DISTINCT discord_id, username, avatar_hash
+       FROM users 
+       WHERE (registration_ip = ? OR last_ip = ?) AND discord_id != ?
+       LIMIT 100`
+    );
+    const rows = stmt.all(String(ip), String(ip), String(excludeDiscordId));
 
-  return res.rows.map(r => ({
-    discord_id: r.discord_id,
-    username: r.username,
-    avatar_hash: r.avatar_hash,
-    match_type: 'ip'
-  }));
+    return rows.map(row => ({
+      discord_id: row.discord_id,
+      username: row.username,
+      avatar_hash: row.avatar_hash
+    }));
+  } catch (err) {
+    console.warn('[DB] Find friends by IP error:', err.message);
+    return [];
+  }
 }
 
 // ============= GUILD İSİM CACHE =============
 export async function dbSaveGuildName(guildId, name, icon, banner, description) {
-  if (!pool) return;
-  await pool.query(
-    `INSERT INTO guild_cache (guild_id, name, icon, banner, description, updated_at) 
-     VALUES ($1, $2, $3, $4, $5, NOW())
-     ON CONFLICT (guild_id) DO UPDATE SET 
-      name = COALESCE(EXCLUDED.name, guild_cache.name),
-      icon = CASE WHEN EXCLUDED.icon IS DISTINCT FROM guild_cache.icon THEN EXCLUDED.icon ELSE guild_cache.icon END,
-      banner = CASE WHEN EXCLUDED.banner IS DISTINCT FROM guild_cache.banner THEN EXCLUDED.banner ELSE guild_cache.banner END,
-      description = CASE WHEN EXCLUDED.description IS DISTINCT FROM guild_cache.description THEN EXCLUDED.description ELSE guild_cache.description END,
-      updated_at = NOW()` ,
-    [String(guildId), name, icon, banner, description]
-  );
+  if (!db) return;
+  try {
+    // SQLite UPSERT: INSERT OR REPLACE
+    const stmt = db.prepare(
+      `INSERT OR REPLACE INTO guild_cache (guild_id, name, icon, banner, description, updated_at) 
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`
+    );
+    stmt.run(String(guildId), name, icon, banner, description);
+  } catch (err) {
+    console.warn('[DB] Save guild name error:', err.message);
+  }
 }
 
 export async function dbGetGuildName(guildId) {
-  if (!pool) return null;
-  const res = await pool.query('SELECT name, icon, banner, description FROM guild_cache WHERE guild_id = $1', [String(guildId)]);
-  return res.rows[0] || null;
+  if (!db) return null;
+  try {
+    const stmt = db.prepare('SELECT name, icon, banner, description FROM guild_cache WHERE guild_id = ?');
+    return stmt.get(String(guildId)) || null;
+  } catch (err) {
+    console.warn('[DB] Get guild name error:', err.message);
+    return null;
+  }
 }
 
 export async function dbListGuildNames(options = {}) {
-  if (!pool) return { names: [], total: 0 };
+  if (!db) return { names: [], total: 0 };
   const { searchTerm = '', limit = 100, offset = 0 } = options;
   const limitVal = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
   const offsetVal = Math.max(parseInt(offset, 10) || 0, 0);
 
-  const params = [];
-  const filters = [];
-  if (searchTerm) {
-    params.push(`%${searchTerm}%`);
-    const nameIdx = params.length;
-    params.push(`%${searchTerm}%`);
-    const idIdx = params.length;
-    filters.push(`(COALESCE(name,'') ILIKE $${nameIdx} OR guild_id ILIKE $${idIdx})`);
+  try {
+    let listQuery, countQuery;
+    
+    if (searchTerm) {
+      const searchPattern = `%${searchTerm.toLowerCase()}%`;
+      listQuery = db.prepare(`
+        SELECT guild_id, name, icon, banner, description, updated_at
+        FROM guild_cache
+        WHERE (LOWER(COALESCE(name,'')) LIKE ? OR LOWER(guild_id) LIKE ?)
+        ORDER BY updated_at DESC, guild_id ASC
+        LIMIT ? OFFSET ?
+      `);
+      countQuery = db.prepare(`
+        SELECT COUNT(*) AS count FROM guild_cache 
+        WHERE (LOWER(COALESCE(name,'')) LIKE ? OR LOWER(guild_id) LIKE ?)
+      `);
+      
+      const listRes = listQuery.all(searchPattern, searchPattern, limitVal, offsetVal);
+      const countRes = countQuery.get(searchPattern, searchPattern);
+      
+      return {
+        names: listRes || [],
+        total: Number(countRes?.count || 0)
+      };
+    } else {
+      listQuery = db.prepare(`
+        SELECT guild_id, name, icon, banner, description, updated_at
+        FROM guild_cache
+        ORDER BY updated_at DESC, guild_id ASC
+        LIMIT ? OFFSET ?
+      `);
+      countQuery = db.prepare('SELECT COUNT(*) AS count FROM guild_cache');
+      
+      const listRes = listQuery.all(limitVal, offsetVal);
+      const countRes = countQuery.get();
+      
+      return {
+        names: listRes || [],
+        total: Number(countRes?.count || 0)
+      };
+    }
+  } catch (err) {
+    console.warn('[DB] List guild names error:', err.message);
+    return { names: [], total: 0 };
   }
-  const whereClause = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
-
-  const listQuery = `
-    SELECT guild_id, name, icon, banner, description, updated_at
-    FROM guild_cache
-    ${whereClause}
-    ORDER BY updated_at DESC NULLS LAST, guild_id ASC
-    LIMIT $${params.length + 1}
-    OFFSET $${params.length + 2}
-  `;
-
-  const countQuery = `SELECT COUNT(*) AS count FROM guild_cache ${whereClause}`;
-
-  const [listRes, countRes] = await Promise.all([
-    pool.query(listQuery, [...params, limitVal, offsetVal]),
-    pool.query(countQuery, params)
-  ]);
-
-  return {
-    names: listRes.rows,
-    total: Number(countRes.rows?.[0]?.count || 0)
-  };
 }
 
 export async function dbDeleteGuildName(guildId) {
-  if (!pool) return;
-  await pool.query('DELETE FROM guild_cache WHERE guild_id = $1', [String(guildId)]);
+  if (!db) return;
+  try {
+    const stmt = db.prepare('DELETE FROM guild_cache WHERE guild_id = ?');
+    stmt.run(String(guildId));
+  } catch (err) {
+    console.warn('[DB] Delete guild name error:', err.message);
+  }
 }
 
 // ============= İSTATİSTİKLER =============
 export async function dbGetStats() {
-  if (!pool) return null;
+  // PostgreSQL kullanıyorsak
+  if (isPostgres && pool) {
+    try {
+      const usersRes = await pool.query('SELECT COUNT(*) as cnt FROM users');
+      const emailsRes = await pool.query("SELECT COUNT(*) as cnt FROM users WHERE email IS NOT NULL AND email != ''");
+      const guildsRes = await pool.query('SELECT COUNT(DISTINCT guild_id) as cnt FROM user_guilds');
+      const logsRes = await pool.query('SELECT COUNT(*) as cnt FROM query_logs');
+      
+      return {
+        total_users: parseInt(usersRes.rows[0]?.cnt || 0),
+        total_emails: parseInt(emailsRes.rows[0]?.cnt || 0),
+        total_guilds: parseInt(guildsRes.rows[0]?.cnt || 0),
+        total_query_logs: parseInt(logsRes.rows[0]?.cnt || 0),
+        db_type: 'postgresql'
+      };
+    } catch (err) {
+      console.warn('[DB] PostgreSQL Get stats error:', err.message);
+      return null;
+    }
+  }
   
-  const [users, emails, guilds, logs] = await Promise.all([
-    pool.query('SELECT COUNT(*) as cnt FROM users'),
-    pool.query("SELECT COUNT(*) as cnt FROM users WHERE email IS NOT NULL AND email != ''"),
-    pool.query('SELECT COUNT(DISTINCT guild_id) as cnt FROM user_guilds'),
-    pool.query('SELECT COUNT(*) as cnt FROM query_logs')
-  ]);
+  // SQLite kullanıyorsak
+  if (!db) return null;
+  
+  try {
+    const usersStmt = db.prepare('SELECT COUNT(*) as cnt FROM users');
+    const emailsStmt = db.prepare("SELECT COUNT(*) as cnt FROM users WHERE email IS NOT NULL AND email != ''");
+    const guildsStmt = db.prepare('SELECT COUNT(DISTINCT guild_id) as cnt FROM user_guilds');
+    const logsStmt = db.prepare('SELECT COUNT(*) as cnt FROM query_logs');
+    
+    const users = usersStmt.get();
+    const emails = emailsStmt.get();
+    const guilds = guildsStmt.get();
+    const logs = logsStmt.get();
 
-  return {
-    total_users: parseInt(users.rows[0].cnt),
-    total_emails: parseInt(emails.rows[0].cnt),
-    total_guilds: parseInt(guilds.rows[0].cnt),
-    total_query_logs: parseInt(logs.rows[0].cnt)
-  };
+    return {
+      total_users: parseInt(users?.cnt || 0),
+      total_emails: parseInt(emails?.cnt || 0),
+      total_guilds: parseInt(guilds?.cnt || 0),
+      total_query_logs: parseInt(logs?.cnt || 0),
+      db_type: 'sqlite'
+    };
+  } catch (err) {
+    console.warn('[DB] SQLite Get stats error:', err.message);
+    return null;
+  }
 }
 
-// Run a raw SQL query (administrative helper for testing/seeding)
-export async function runQuery(sql, params) {
-  if (!pool) throw new Error('db_not_ready');
-  return pool.query(sql, params);
-}
-
-// Execute SQL statement (for data_sources.js)
-export async function execSql(sql) {
-  if (!pool) throw new Error('db_not_ready');
-  return pool.query(sql);
-}
 
 // ============= FIELD İLE ARAMA (Email/IP field tarama) =============
 export async function dbSearchByField(field, value) {
-  if (!pool) return [];
+  if (!db) return [];
   const needle = String(value);
 
-  let query;
-  if (field === 'email') {
-    query = `SELECT discord_id, username, email, avatar_hash, registration_ip, last_ip, phone, connections, source
-             FROM users WHERE LOWER(email) = LOWER($1) LIMIT 100`;
-  } else if (field === 'ip') {
-    query = `SELECT discord_id, username, email, avatar_hash, registration_ip, last_ip, phone, connections, source
-             FROM users WHERE registration_ip = $1 OR last_ip = $1 LIMIT 100`;
-  } else {
+  try {
+    let stmt;
+    if (field === 'email') {
+      stmt = db.prepare(
+        `SELECT discord_id, username, email, avatar_hash, registration_ip, last_ip, phone, connections, source
+         FROM users WHERE LOWER(email) = LOWER(?) LIMIT 100`
+      );
+    } else if (field === 'ip') {
+      stmt = db.prepare(
+        `SELECT discord_id, username, email, avatar_hash, registration_ip, last_ip, phone, connections, source
+         FROM users WHERE registration_ip = ? OR last_ip = ? LIMIT 100`
+      );
+    } else {
+      return [];
+    }
+
+    const rows = field === 'ip' ? stmt.all(needle, needle) : stmt.all(needle);
+    return rows.map(row => ({
+      discord_id: row.discord_id,
+      email: row.email,
+      ip: row.ip,
+      username: row.username,
+      avatar_hash: row.avatar_hash,
+      phone: row.phone,
+      connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
+      source: row.source || 'database'
+    }));
+  } catch (err) {
+    console.warn('[DB] Search by field error:', err.message);
     return [];
   }
+}
 
-  const res = await pool.query(query, [needle]);
-  return res.rows.map(row => ({
-    discord_id: row.discord_id,
-    email: row.email,
-    ip: row.registration_ip || row.last_ip,
-    username: row.username,
-    avatar_hash: row.avatar_hash,
-    phone: row.phone,
-    connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
-    source: row.source
-  }));
+// ========== YENİ SORGU TİPLERİ İÇİN POSTGRESQL FONKSİYONLARI ==========
+
+// Tapu Tablo Oluşturma
+export async function dbCreateTapuTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tapu_records (
+        id VARCHAR(50) PRIMARY KEY,
+        city VARCHAR(100),
+        district VARCHAR(100),
+        neighborhood VARCHAR(100),
+        ada VARCHAR(50),
+        parsel VARCHAR(50),
+        property_type VARCHAR(50),
+        ownership_type VARCHAR(50),
+        area_m2 INTEGER,
+        owner_name VARCHAR(200),
+        owner_tc VARCHAR(11),
+        registration_date DATE,
+        sheet_no VARCHAR(20),
+        volume_no VARCHAR(20),
+        page_no VARCHAR(20),
+        address TEXT,
+        status VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_tapu_city ON tapu_records(city)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_tapu_owner_tc ON tapu_records(owner_tc)');
+    return true;
+  } catch (err) {
+    console.warn('[DB] Tapu tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// GSM Tablo Oluşturma
+export async function dbCreateGSMTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS gsm_records (
+        id VARCHAR(50) PRIMARY KEY,
+        phone VARCHAR(20),
+        name VARCHAR(200),
+        city VARCHAR(100),
+        operator VARCHAR(50),
+        type VARCHAR(50),
+        tc_no VARCHAR(11),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_gsm_phone ON gsm_records(phone)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_gsm_city ON gsm_records(city)');
+    return true;
+  } catch (err) {
+    console.warn('[DB] GSM tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// İşyeri Tablo Oluşturma
+export async function dbCreateIsyeriTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS isyeri_records (
+        id VARCHAR(50) PRIMARY KEY,
+        business_name VARCHAR(200),
+        trade_name VARCHAR(200),
+        business_type VARCHAR(100),
+        city VARCHAR(100),
+        district VARCHAR(100),
+        address TEXT,
+        phone VARCHAR(20),
+        tax_no VARCHAR(50),
+        mersis_no VARCHAR(50),
+        trade_registry_no VARCHAR(50),
+        registration_date DATE,
+        owner_name VARCHAR(200),
+        owner_tc VARCHAR(11),
+        authorized_capital BIGINT,
+        employee_count INTEGER,
+        status VARCHAR(50),
+        nace_code VARCHAR(20),
+        web_address VARCHAR(200),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    return true;
+  } catch (err) {
+    console.warn('[DB] İşyeri tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// Ad Soyad Tablo Oluşturma
+export async function dbCreateAdSoyadTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS adsoyad_records (
+        id VARCHAR(50) PRIMARY KEY,
+        tc_no VARCHAR(11),
+        first_name VARCHAR(100),
+        last_name VARCHAR(100),
+        full_name VARCHAR(200),
+        gender VARCHAR(20),
+        birth_date DATE,
+        age INTEGER,
+        birth_city VARCHAR(100),
+        current_city VARCHAR(100),
+        mother_name VARCHAR(100),
+        father_name VARCHAR(100),
+        blood_type VARCHAR(10),
+        marital_status VARCHAR(50),
+        phone VARCHAR(20),
+        address TEXT,
+        neighborhood VARCHAR(100),
+        district VARCHAR(100),
+        status VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_adsoyad_tc ON adsoyad_records(tc_no)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_adsoyad_name ON adsoyad_records(full_name)');
+    return true;
+  } catch (err) {
+    console.warn('[DB] Ad Soyad tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// Aşı Tablo Oluşturma
+export async function dbCreateAsiTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS asi_records (
+        id VARCHAR(100) PRIMARY KEY,
+        tc_no VARCHAR(11),
+        first_name VARCHAR(100),
+        last_name VARCHAR(100),
+        full_name VARCHAR(200),
+        gender VARCHAR(20),
+        age INTEGER,
+        city VARCHAR(100),
+        district VARCHAR(100),
+        vaccine_type VARCHAR(100),
+        dose_number VARCHAR(50),
+        dose_order INTEGER,
+        vaccine_date DATE,
+        vaccine_center VARCHAR(200),
+        lot_number VARCHAR(50),
+        serial_number VARCHAR(50),
+        doctor_name VARCHAR(100),
+        side_effect VARCHAR(100),
+        next_dose_date DATE,
+        status VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    return true;
+  } catch (err) {
+    console.warn('[DB] Aşı tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// Yabancı Tablo Oluşturma
+export async function dbCreateYabanciTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS yabanci_records (
+        id VARCHAR(50) PRIMARY KEY,
+        passport_no VARCHAR(50),
+        kimlik_no VARCHAR(20),
+        first_name VARCHAR(100),
+        last_name VARCHAR(100),
+        nationality VARCHAR(100),
+        birth_date DATE,
+        gender VARCHAR(20),
+        city VARCHAR(100),
+        address TEXT,
+        phone VARCHAR(20),
+        status VARCHAR(100),
+        entry_date DATE,
+        permit_expiry DATE,
+        registration_office VARCHAR(200),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    return true;
+  } catch (err) {
+    console.warn('[DB] Yabancı tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// Adres Tablo Oluşturma
+export async function dbCreateAdresTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS adres_records (
+        id VARCHAR(50) PRIMARY KEY,
+        tc_no VARCHAR(11),
+        first_name VARCHAR(100),
+        last_name VARCHAR(100),
+        full_name VARCHAR(200),
+        city VARCHAR(100),
+        district VARCHAR(100),
+        neighborhood VARCHAR(100),
+        street VARCHAR(200),
+        building_no VARCHAR(20),
+        apartment_no VARCHAR(20),
+        floor VARCHAR(10),
+        zip_code VARCHAR(10),
+        full_address TEXT,
+        address_type VARCHAR(50),
+        registration_date DATE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    return true;
+  } catch (err) {
+    console.warn('[DB] Adres tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// Vesika Tablo Oluşturma
+export async function dbCreateVesikaTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS vesika_records (
+        id VARCHAR(50) PRIMARY KEY,
+        tc_no VARCHAR(11),
+        first_name VARCHAR(100),
+        last_name VARCHAR(100),
+        full_name VARCHAR(200),
+        document_type VARCHAR(100),
+        document_no VARCHAR(100),
+        issue_date DATE,
+        expiry_date DATE,
+        issuing_authority VARCHAR(200),
+        city VARCHAR(100),
+        status VARCHAR(50),
+        verification_code VARCHAR(50),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    return true;
+  } catch (err) {
+    console.warn('[DB] Vesika tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// E-Okul Tablo Oluşturma
+export async function dbCreateEokulTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS eokul_records (
+        id VARCHAR(50) PRIMARY KEY,
+        student_tc VARCHAR(11),
+        student_name VARCHAR(100),
+        student_surname VARCHAR(100),
+        full_name VARCHAR(200),
+        school_name VARCHAR(200),
+        city VARCHAR(100),
+        class VARCHAR(50),
+        student_no VARCHAR(20),
+        birth_date DATE,
+        gender VARCHAR(20),
+        parent_name VARCHAR(100),
+        parent_phone VARCHAR(20),
+        gpa DECIMAL(3,2),
+        registration_year VARCHAR(10),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    return true;
+  } catch (err) {
+    console.warn('[DB] E-Okul tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// Twitter Tablo Oluşturma
+export async function dbCreateTwitterTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS twitter_records (
+        id VARCHAR(50) PRIMARY KEY,
+        username VARCHAR(100),
+        display_name VARCHAR(200),
+        email VARCHAR(200),
+        phone VARCHAR(20),
+        followers INTEGER,
+        following INTEGER,
+        tweets INTEGER,
+        joined_date DATE,
+        location VARCHAR(100),
+        verified BOOLEAN,
+        bio TEXT,
+        profile_image VARCHAR(500),
+        last_tweet DATE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    return true;
+  } catch (err) {
+    console.warn('[DB] Twitter tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// Azerbaycan Tablo Oluşturma
+export async function dbCreateAzerbaycanTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS azerbaycan_records (
+        id VARCHAR(50) PRIMARY KEY,
+        fin_code VARCHAR(50),
+        id_card_no VARCHAR(50),
+        first_name VARCHAR(100),
+        last_name VARCHAR(100),
+        full_name VARCHAR(200),
+        birth_date DATE,
+        gender VARCHAR(20),
+        city VARCHAR(100),
+        address TEXT,
+        phone VARCHAR(20),
+        registration_office VARCHAR(200),
+        nationality VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    return true;
+  } catch (err) {
+    console.warn('[DB] Azerbaycan tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// TurkNet IP Tablo Oluşturma
+export async function dbCreateTurknetTable() {
+  if (!isPostgres || !pool) return false;
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS turknet_records (
+        id SERIAL PRIMARY KEY,
+        ip INET,
+        customer_name VARCHAR(200),
+        address TEXT,
+        city VARCHAR(100),
+        subscriber_no VARCHAR(50),
+        service_type VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_turknet_ip ON turknet_records(ip)');
+    return true;
+  } catch (err) {
+    console.warn('[DB] TurkNet tablo hatası:', err.message);
+    return false;
+  }
+}
+
+// TÜM TABLOLARI OLUŞTUR
+export async function dbCreateAllTables() {
+  const results = await Promise.all([
+    dbCreateTapuTable(),
+    dbCreateGSMTable(),
+    dbCreateIsyeriTable(),
+    dbCreateAdSoyadTable(),
+    dbCreateAsiTable(),
+    dbCreateYabanciTable(),
+    dbCreateAdresTable(),
+    dbCreateVesikaTable(),
+    dbCreateEokulTable(),
+    dbCreateTwitterTable(),
+    dbCreateAzerbaycanTable(),
+    dbCreateTurknetTable()
+  ]);
+  console.log('[DB] Tüm tablolar oluşturuldu:', results.filter(r => r).length, 'başarılı');
+  return results;
+}
+
+// 🚀 TOPLU VERİ YÜKLEME - Tüm za*.sql ve discorddata.txt dosyalarını PostgreSQL'e yükle
+export async function bulkLoadAllData(dataDir, sqlFiles, txtFiles) {
+  console.log('[BulkLoad] ============================================');
+  console.log(`[BulkLoad] TOPLU VERİ YÜKLEME BAŞLATILIYOR...`);
+  console.log(`[BulkLoad] SQL Dosyaları: ${sqlFiles.length} adet`);
+  console.log(`[BulkLoad] TXT Dosyaları: ${txtFiles.length} adet`);
+  console.log('[BulkLoad] ============================================\n');
+  
+  const results = {
+    sql: { success: [], failed: [], total: sqlFiles.length },
+    txt: { success: [], failed: [], total: txtFiles.length },
+    stats: { inserted: 0, errors: 0 }
+  };
+  
+  // 1️⃣ SQL DOSYALARINI YÜKLE
+  for (const sqlPath of sqlFiles) {
+    try {
+      const fileName = path.basename(sqlPath);
+      console.log(`[BulkLoad] 📄 Yükleniyor: ${fileName}`);
+      
+      if (!fs.existsSync(sqlPath)) {
+        console.log(`[BulkLoad] ❌ Dosya bulunamadı: ${fileName}`);
+        results.sql.failed.push({ file: fileName, error: 'Dosya bulunamadı' });
+        continue;
+      }
+      
+      const stats = fs.statSync(sqlPath);
+      const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
+      console.log(`[BulkLoad] 📊 Boyut: ${sizeMB} MB`);
+      
+      // SQL dosyasını oku ve çalıştır
+      const content = fs.readFileSync(sqlPath, 'utf8');
+      
+      // PostgreSQL için SQL komutlarını dönüştür ve çalıştır
+      const statements = parseSqlStatements(content);
+      console.log(`[BulkLoad] 📝 ${statements.length} SQL ifadesi bulundu`);
+      
+      let executed = 0;
+      for (const stmt of statements) {
+        try {
+          await execSql(stmt);
+          executed++;
+        } catch (err) {
+          // Hata olsa da devam et
+          if (!err.message?.includes('duplicate') && !err.message?.includes('already exists')) {
+            results.stats.errors++;
+          }
+        }
+      }
+      
+      console.log(`[BulkLoad] ✅ ${fileName} - ${executed} ifade çalıştırıldı`);
+      results.sql.success.push({ file: fileName, sizeMB, statements: executed });
+      
+    } catch (err) {
+      const fileName = path.basename(sqlPath);
+      console.error(`[BulkLoad] ❌ ${fileName} hatası:`, err.message);
+      results.sql.failed.push({ file: fileName, error: err.message });
+    }
+  }
+  
+  // 2️⃣ TXT DOSYALARINI YÜKLE (dcidsorgudata.txt, dcıdsorgudata.txt)
+  for (const txtPath of txtFiles) {
+    try {
+      const fileName = path.basename(txtPath);
+      console.log(`[BulkLoad] 📝 Yükleniyor: ${fileName}`);
+      
+      if (!fs.existsSync(txtPath)) {
+        console.log(`[BulkLoad] ❌ Dosya bulunamadı: ${fileName}`);
+        results.txt.failed.push({ file: fileName, error: 'Dosya bulunamadı' });
+        continue;
+      }
+      
+      const stats = fs.statSync(txtPath);
+      const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
+      console.log(`[BulkLoad] 📊 Boyut: ${sizeMB} MB`);
+      
+      // TXT dosyasını oku
+      const content = fs.readFileSync(txtPath, 'utf8');
+      
+      // JSON formatında mı kontrol et
+      try {
+        const data = JSON.parse(content);
+        
+        if (Array.isArray(data)) {
+          // Dizi formatında - doğrudan users tablosuna ekle
+          console.log(`[BulkLoad] 📋 ${data.length} kayıt bulundu (array format)`);
+          let inserted = 0;
+          
+          for (const user of data) {
+            try {
+              const discordId = user.discord_id || user.id || user.user_id || user.discordid;
+              const username = user.username || user.name || user.user_name || 'Unknown';
+              const email = user.email || user.mail || null;
+              
+              if (discordId) {
+                await runQuery(
+                  `INSERT INTO users (discord_id, username, email, source, created_at) 
+                   VALUES ($1, $2, $3, $4, NOW())
+                   ON CONFLICT (discord_id) DO NOTHING`,
+                  [String(discordId), username, email, fileName]
+                );
+                inserted++;
+              }
+            } catch (err) {
+              // Duplicate hatalarını görmezden gel
+            }
+          }
+          
+          console.log(`[BulkLoad] ✅ ${fileName} - ${inserted} kayıt eklendi`);
+          results.txt.success.push({ file: fileName, sizeMB, records: inserted });
+          results.stats.inserted += inserted;
+          
+        } else if (data.users && Array.isArray(data.users)) {
+          // { users: [...] } formatında
+          console.log(`[BulkLoad] 📋 ${data.users.length} kayıt bulundu (users object format)`);
+          let inserted = 0;
+          
+          for (const user of data.users) {
+            try {
+              const discordId = user.discord_id || user.id || user.user_id || user.discordid;
+              const username = user.username || user.name || user.user_name || 'Unknown';
+              const email = user.email || user.mail || null;
+              const ip = user.ip || user.ip_address || user.last_ip || null;
+              const phone = user.phone || user.gsm || user.tel || null;
+              
+              if (discordId) {
+                await runQuery(
+                  `INSERT INTO users (discord_id, username, email, ip_address, phone, source, created_at) 
+                   VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                   ON CONFLICT (discord_id) DO NOTHING`,
+                  [String(discordId), username, email, ip, phone, fileName]
+                );
+                inserted++;
+              }
+            } catch (err) {
+              // Duplicate hatalarını görmezden gel
+            }
+          }
+          
+          console.log(`[BulkLoad] ✅ ${fileName} - ${inserted} kayıt eklendi`);
+          results.txt.success.push({ file: fileName, sizeMB, records: inserted });
+          results.stats.inserted += inserted;
+          
+        } else {
+          // Diğer formatlar - satır satır işle
+          const lines = content.split('\n').filter(l => l.trim());
+          console.log(`[BulkLoad] 📋 ${lines.length} satır bulundu (line format)`);
+          results.txt.success.push({ file: fileName, sizeMB, lines: lines.length });
+        }
+        
+      } catch (jsonErr) {
+        // JSON değil, düz metin - satır satır işle
+        const lines = content.split('\n').filter(l => l.trim());
+        console.log(`[BulkLoad] 📋 ${lines.length} satır bulundu (plain text)`);
+        results.txt.success.push({ file: fileName, sizeMB, lines: lines.length });
+      }
+      
+    } catch (err) {
+      const fileName = path.basename(txtPath);
+      console.error(`[BulkLoad] ❌ ${fileName} hatası:`, err.message);
+      results.txt.failed.push({ file: fileName, error: err.message });
+    }
+  }
+  
+  // Özet
+  console.log('\n[BulkLoad] ============================================');
+  console.log('[BulkLoad] 📊 YÜKLEME ÖZETİ');
+  console.log('[BulkLoad] ============================================');
+  console.log(`[BulkLoad] ✅ SQL Başarılı: ${results.sql.success.length}/${results.sql.total}`);
+  console.log(`[BulkLoad] ❌ SQL Hatalı: ${results.sql.failed.length}/${results.sql.total}`);
+  console.log(`[BulkLoad] ✅ TXT Başarılı: ${results.txt.success.length}/${results.txt.total}`);
+  console.log(`[BulkLoad] ❌ TXT Hatalı: ${results.txt.failed.length}/${results.txt.total}`);
+  console.log(`[BulkLoad] 📈 Toplam Eklenen: ${results.stats.inserted} kayıt`);
+  console.log(`[BulkLoad] ⚠️  Toplam Hata: ${results.stats.errors}`);
+  console.log('[BulkLoad] ============================================');
+  
+  return results;
+}
+
+// SQL ifadelerini parse et (basit parser)
+function parseSqlStatements(content) {
+  // Yorumları ve boşlukları temizle
+  const lines = content.split('\n');
+  const statements = [];
+  let current = '';
+  
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    // Yorum satırlarını atla
+    if (trimmed.startsWith('--') || trimmed.startsWith('/*') || trimmed.startsWith('*')) {
+      continue;
+    }
+    
+    current += ' ' + trimmed;
+    
+    // ; ile biten satırlarda statement'i tamamla
+    if (trimmed.endsWith(';')) {
+      const clean = current.trim();
+      if (clean.length > 10) { // Anlamlı statement
+        statements.push(clean);
+      }
+      current = '';
+    }
+  }
+  
+  // Son statement (eğer ; ile bitmiyorsa)
+  if (current.trim().length > 10) {
+    statements.push(current.trim());
+  }
+  
+  return statements;
 }

@@ -146,9 +146,9 @@
             <button class="tab active" data-mode="id">Discord ID</button>
             <button class="tab" data-mode="email">Email</button>
             <button class="tab" data-mode="ip">IP</button>
+            <button class="tab" data-mode="idcard">🆔 Kimlik</button>
             <button class="tab" data-mode="guild">Sunucu</button>
             <button class="tab" data-mode="guilds"> Sunucular</button>
-            <button class="tab" data-mode="plaka">🚗 Plaka</button>
           </div>
 
           <div class="row">
@@ -157,6 +157,99 @@
           </div>
 
           <div id="searchError" class="error hidden"></div>
+
+          <!-- 🆔 Kimlik Oluşturucu Formu -->
+          <div id="idCardForm" class="id-card-form hidden" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border: 2px solid #5865F2; border-radius: 12px; padding: 20px; margin: 20px 0;">
+            <h3 style="color: #5865F2; margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+              🆔 Sahte Kimlik Oluşturucu
+            </h3>
+            <div style="background: rgba(237, 66, 69, 0.2); border: 1px solid #ED4245; color: #fff; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">
+              ⚠️ <strong>Uyarı:</strong> Bu araç sadece test/eglence amaçlıdır. Gerçek kimlik yerine geçmez!
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+              <div>
+                <label style="display: block; color: #b9bbbe; font-size: 12px; margin-bottom: 5px;">İsim</label>
+                <input type="text" id="idCardName" placeholder="AHMET" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid #5865F2; border-radius: 6px; color: #fff;" />
+              </div>
+              <div>
+                <label style="display: block; color: #b9bbbe; font-size: 12px; margin-bottom: 5px;">Soyisim</label>
+                <input type="text" id="idCardSurname" placeholder="YILMAZ" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid #5865F2; border-radius: 6px; color: #fff;" />
+              </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+              <div>
+                <label style="display: block; color: #b9bbbe; font-size: 12px; margin-bottom: 5px;">Doğum Tarihi</label>
+                <input type="date" id="idCardBirthDate" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid #5865F2; border-radius: 6px; color: #fff;" />
+              </div>
+              <div>
+                <label style="display: block; color: #b9bbbe; font-size: 12px; margin-bottom: 5px;">Cinsiyet</label>
+                <select id="idCardGender" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid #5865F2; border-radius: 6px; color: #fff;">
+                  <option value="E / M">Erkek (E / M)</option>
+                  <option value="K / F">Kadın (K / F)</option>
+                </select>
+              </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+              <div>
+                <label style="display: block; color: #b9bbbe; font-size: 12px; margin-bottom: 5px;">T.C. Kimlik No (11 haneli)</label>
+                <input type="text" id="idCardTckn" placeholder="12345678901" maxlength="11" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid #5865F2; border-radius: 6px; color: #fff;" />
+              </div>
+              <div>
+                <label style="display: block; color: #b9bbbe; font-size: 12px; margin-bottom: 5px;">Seri No</label>
+                <input type="text" id="idCardDocNo" placeholder="A12B34567" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid #5865F2; border-radius: 6px; color: #fff;" />
+              </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+              <div>
+                <label style="display: block; color: #b9bbbe; font-size: 12px; margin-bottom: 5px;">Anne Adı</label>
+                <input type="text" id="idCardMother" placeholder="AYŞE" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid #5865F2; border-radius: 6px; color: #fff;" />
+              </div>
+              <div>
+                <label style="display: block; color: #b9bbbe; font-size: 12px; margin-bottom: 5px;">Baba Adı</label>
+                <input type="text" id="idCardFather" placeholder="MEHMET" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid #5865F2; border-radius: 6px; color: #fff;" />
+              </div>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+              <label style="display: block; color: #b9bbbe; font-size: 12px; margin-bottom: 5px;">Son Geçerlilik Tarihi</label>
+              <input type="date" id="idCardValid" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid #5865F2; border-radius: 6px; color: #fff;" />
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+              <label style="display: block; color: #b9bbbe; font-size: 12px; margin-bottom: 5px;">Kimlik Fotoğrafı</label>
+              <input type="file" id="idCardImage" accept="image/*" style="width: 100%; padding: 10px; background: rgba(0,0,0,0.3); border: 1px solid #5865F2; border-radius: 6px; color: #fff;" />
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+              <button id="generateIdCardBtn" class="btn btn-primary" style="flex: 1; padding: 14px; font-size: 16px; background: #5865F2;">
+                🆔 Kimlik Oluştur
+              </button>
+              <button id="clearIdCardBtn" class="btn" style="padding: 14px; background: #747f8d;">
+                🗑️ Temizle
+              </button>
+            </div>
+            
+            <!-- Kimlik Sonuçları -->
+            <div id="idCardResults" class="hidden" style="margin-top: 25px;">
+              <h4 style="color: #3BA55D; margin-bottom: 15px;">✅ Kimlik Başarıyla Oluşturuldu!</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                <div>
+                  <h5 style="color: #b9bbbe; margin-bottom: 10px;">Ön Yüz</h5>
+                  <iframe id="idCardFront" style="width: 100%; height: 300px; border: 2px solid #5865F2; border-radius: 10px; background: white;"></iframe>
+                  <button id="downloadFrontBtn" class="btn btn-success" style="width: 100%; margin-top: 10px; background: #3BA55D;">📥 Ön Yüz İndir</button>
+                </div>
+                <div>
+                  <h5 style="color: #b9bbbe; margin-bottom: 10px;">Arka Yüz</h5>
+                  <iframe id="idCardBack" style="width: 100%; height: 300px; border: 2px solid #5865F2; border-radius: 10px; background: white;"></iframe>
+                  <button id="downloadBackBtn" class="btn btn-success" style="width: 100%; margin-top: 10px; background: #3BA55D;">📥 Arka Yüz İndir</button>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <!-- İstatistik bar -->
           <div class="stats-bar" id="statsBar"></div>

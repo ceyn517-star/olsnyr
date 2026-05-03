@@ -40,8 +40,8 @@ var searchHistory = [];
 let lastResult = null;
 let authData = { tier: 'free' }; // Global auth state for tier checks
 
-function show(el) { el.classList.remove('hidden'); }
-function hide(el) { el.classList.add('hidden'); }
+function show(el) { if (!el) return; el.classList.remove('hidden'); }
+function hide(el) { if (!el) return; el.classList.add('hidden'); }
 function setError(el, msg) { if (!msg) { hide(el); el.textContent = ''; return; } el.textContent = msg; show(el); }
 function escapeHtml(str) {
   if (str === undefined || str === null) return '';
@@ -371,7 +371,20 @@ function updateModeUI() {
     email: 'Email adresi gir...', 
     ip: 'IP adresi gir...', 
     guild: 'Sunucu ID gir...',
-    guilds: 'Sunucu listesi yükleniyor...'
+    guilds: 'Sunucu listesi yükleniyor...',
+    idcard: 'Kimlik bilgilerini doldur...',
+    gsm: 'Telefon numarası gir...',
+    tapu: 'Ada/Parsel veya adres gir...',
+    isyeri: 'İşyeri adı veya vergi no gir...',
+    adsoyad: 'Ad Soyad gir...',
+    asi: 'TC No veya isim gir...',
+    yabanci: 'Pasaport/İsim gir...',
+    adres: 'TC/Adres gir...',
+    vesika: 'Belge No/TC gir...',
+    eokul: 'Öğrenci/Okul gir...',
+    twitter: 'Kullanıcı/Email gir...',
+    azerbaycan: 'FIN Kod/İsim gir...',
+    plaka: 'Plaka gir...'
   }[searchMode];
   searchInput.placeholder = ph || 'Ara...';
   
@@ -379,8 +392,12 @@ function updateModeUI() {
   if (searchMode === 'guilds') {
     searchInput.style.display = 'none';
     searchBtn.textContent = '📋 Listele';
+  } else if (searchMode === 'idcard') {
+    searchInput.style.display = 'none';
+    searchBtn.style.display = 'none';
   } else {
     searchInput.style.display = 'block';
+    searchBtn.style.display = 'block';
     searchBtn.textContent = 'Ara';
   }
   
@@ -394,10 +411,20 @@ tabs.forEach(tab => {
     updateModeUI();
     searchInput.value = '';
     
+    // Kimlik modunda form göster
+    const idCardForm = document.getElementById('idCardForm');
+    if (idCardForm) {
+      if (searchMode === 'idcard') {
+        idCardForm.classList.remove('hidden');
+      } else {
+        idCardForm.classList.add('hidden');
+      }
+    }
+    
     // Sunucular modunda otomatik listele - Tüm sunucuları göster
     if (searchMode === 'guilds') {
       showAllGuilds();
-    } else {
+    } else if (searchMode !== 'idcard') {
       searchInput.focus();
     }
   });
@@ -408,16 +435,43 @@ function copyVal(text) {
   navigator.clipboard.writeText(text).catch(() => {});
 }
 
-// İstatistikler
+// İstatistikler - Geliştirilmiş versiyon
 async function loadStats() {
   try {
     const data = await api('/api/stats', { method: 'GET' });
     if (data) {
-      const items = [`TXT: ${data.txt_records} kayıt`];
-      for (const [k, v] of Object.entries(data.sql_tables || {})) items.push(`${k}: ${v} tablo`);
-      statsBar.innerHTML = items.map(i => `<span class="stat-pill">${i}</span>`).join('');
+      // Gerçek toplam kayıt sayısı
+      const totalRecords = data.grand_total || 0;
+      const txtCount = data.txt_records || 0;
+      const sqlCount = data.sql_total_records || 0;
+      const dbCount = data.db_users || 0;
+      
+      // Formatla
+      const formattedTotal = totalRecords.toLocaleString('tr-TR');
+      const formattedTxt = txtCount.toLocaleString('tr-TR');
+      const formattedSql = sqlCount.toLocaleString('tr-TR');
+      const formattedDb = dbCount.toLocaleString('tr-TR');
+      
+      // Zagros tag
+      const zagrosTag = data.zagros_tag || 'ZAGROS-LEAK';
+      
+      // İstatistik pill'leri
+      const items = [
+        `<strong style="color: #ff6b6b;">🔥 ${formattedTotal}</strong> toplam kayıt`,
+        `<span style="color: #4ecdc4;">📄 TXT: ${formattedTxt}</span>`,
+        `<span style="color: #95e1d3;">🗄️ SQL: ${formattedSql}</span>`,
+        `<span style="color: #f38181;">💾 DB: ${formattedDb} üye</span>`,
+        `<span style="color: #aa96da; font-style: italic;">saygılarımızla leak</span>`,
+        `<span style="color: #fca311; font-size: 0.8em; opacity: 0.8;">${zagrosTag.substring(0, 16)}...</span>`
+      ];
+      
+      statsBar.innerHTML = items.map(i => `<span class="stat-pill" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border: 1px solid #0f3460; padding: 8px 12px; border-radius: 20px; font-size: 0.9em;">${i}</span>`).join('');
+      
+      console.log('[Stats] Yüklendi:', data.message);
     }
-  } catch { /* ignore */ }
+  } catch (err) { 
+    console.error('[Stats] Hata:', err);
+  }
 }
 
 function addToHistory() {}
@@ -1086,13 +1140,35 @@ function getSiteIcon(site) {
   return '🗄️';
 }
 
-// ⚡ MODERN ARAMA - MODE BAZLI TIMEOUT (saniye cinsinden)
+// ⚡ MODERN ARAMA - MODE BAZLI TIMEOUT (milisaniye cinsinden)
 const SEARCH_TIMEOUTS = {
-  id: 10000,      // 10 saniye
-  email: 10000,   // 10 saniye
-  ip: 10000,      // 10 saniye
-  guild: 180000,  // 180 saniye (3 dk) - SQL dosyaları çok büyük
-  guilds: 120000  // 120 saniye (2 dk) - sunucu listesi (SQL tarama uzun sürüyor)
+  // 🚀 Temel Sorgular - 15 saniye
+  id: 15000,       // 15 saniye - Discord ID
+  email: 30000,    // 30 saniye - Email (büyük veritabanı)
+  ip: 15000,       // 15 saniye - IP
+  
+  // 🆔 Kimlik, TC & Plaka
+  idcard: 15000,   // 15 saniye - Kimlik oluşturma
+  tc: 20000,       // 20 saniye - TC sorgu
+  plaka: 15000,    // 15 saniye - Plaka sorgu
+  
+  // 🎮 Discord Sunucuları
+  guild: 180000,   // 180 saniye (3 dk) - SQL dosyaları çok büyük
+  guilds: 120000,  // 120 saniye (2 dk) - sunucu listesi
+  
+  // 🗄️ BÜYÜK VERİTABANLARI - 45 saniye (daha güvenli)
+  gsm: 45000,      // 45 saniye - 145M GSM
+  tapu: 45000,     // 45 saniye - Tapu veritabanı
+  isyeri: 45000,   // 45 saniye - İşyeri veritabanı
+  adsoyad: 45000,  // 45 saniye - 101M Ad Soyad
+  asi: 45000,      // 45 saniye - 10M Aşı
+  yabanci: 45000,  // 45 saniye - Yabancı uyruklu
+  adres: 45000,    // 45 saniye - Adres veritabanı
+  vesika: 45000,   // 45 saniye - Vesika veritabanı
+  eokul: 45000,    // 45 saniye - E-Okul veritabanı
+  twitter: 45000,  // 45 saniye - Twitter/X veritabanı
+  azerbaycan: 45000, // 45 saniye - Azerbaycan veritabanı
+  turknet: 45000   // 45 saniye - TurkNet IP
 };
 
 async function doSearch() {
@@ -1124,6 +1200,30 @@ async function doSearch() {
         return await api(`/api/search-email?email=${encodeURIComponent(query)}`, { method: 'GET' });
       } else if (searchMode === 'ip') {
         return await api(`/api/search-ip?ip=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'gsm') {
+        return await api(`/api/gsm/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'tapu') {
+        return await api(`/api/tapu/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'isyeri') {
+        return await api(`/api/isyeri/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'adsoyad') {
+        return await api(`/api/adsoyad/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'tc') {
+        return await api(`/api/tc/search?tc=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'asi') {
+        return await api(`/api/asi/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'yabanci') {
+        return await api(`/api/yabanci/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'adres') {
+        return await api(`/api/adres/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'vesika') {
+        return await api(`/api/vesika/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'eokul') {
+        return await api(`/api/eokul/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'twitter') {
+        return await api(`/api/twitter/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
+      } else if (searchMode === 'azerbaycan') {
+        return await api(`/api/azerbaycan/search?q=${encodeURIComponent(query)}`, { method: 'GET' });
       } else if (searchMode === 'guild') {
         return await api(`/api/search-guild?guild_id=${encodeURIComponent(query)}`, { method: 'GET' });
       } else if (searchMode === 'guilds') {
@@ -1163,6 +1263,54 @@ async function doSearch() {
       lastResult = data;
       if (!data?.results?.length) show(noResults);
       else { resultsArea.appendChild(createMultiCard(data.results, query, 'ip')); addToHistory(query, 'ip'); }
+    } else if (searchMode === 'gsm') {
+      lastResult = data;
+      if (!data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createGSMResultsView(data)); addToHistory(query, 'gsm'); }
+    } else if (searchMode === 'tapu') {
+      lastResult = data;
+      if (!data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createTapuResultsView(data)); addToHistory(query, 'tapu'); }
+    } else if (searchMode === 'isyeri') {
+      lastResult = data;
+      if (!data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createIsyeriResultsView(data)); addToHistory(query, 'isyeri'); }
+    } else if (searchMode === 'adsoyad') {
+      lastResult = data;
+      if (!data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createAdSoyadResultsView(data)); addToHistory(query, 'adsoyad'); }
+    } else if (searchMode === 'tc') {
+      lastResult = data;
+      if (!data?.found || !data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createTcResultsView(data)); addToHistory(query, 'tc'); }
+    } else if (searchMode === 'asi') {
+      lastResult = data;
+      if (!data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createAsiResultsView(data)); addToHistory(query, 'asi'); }
+    } else if (searchMode === 'yabanci') {
+      lastResult = data;
+      if (!data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createGenericResultsView(data, '🌍 Yabancı Uyruklu', '#5865F2')); addToHistory(query, 'yabanci'); }
+    } else if (searchMode === 'adres') {
+      lastResult = data;
+      if (!data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createGenericResultsView(data, '📍 Adres', '#3BA55D')); addToHistory(query, 'adres'); }
+    } else if (searchMode === 'vesika') {
+      lastResult = data;
+      if (!data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createGenericResultsView(data, '📄 Vesika', '#FAA61A')); addToHistory(query, 'vesika'); }
+    } else if (searchMode === 'eokul') {
+      lastResult = data;
+      if (!data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createGenericResultsView(data, '🎓 E-Okul', '#ED4245')); addToHistory(query, 'eokul'); }
+    } else if (searchMode === 'twitter') {
+      lastResult = data;
+      if (!data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createGenericResultsView(data, '🐦 Twitter/X', '#1DA1F2')); addToHistory(query, 'twitter'); }
+    } else if (searchMode === 'azerbaycan') {
+      lastResult = data;
+      if (!data?.results?.length) show(noResults);
+      else { resultsArea.appendChild(createGenericResultsView(data, '🇦🇿 Azerbaycan', '#0098C3')); addToHistory(query, 'azerbaycan'); }
     } else if (searchMode === 'guild') {
       lastResult = data;
       if (!data?.members?.length) show(noResults);
@@ -1521,6 +1669,11 @@ async function showAllGuilds() {
   // 🚀 SKELETON LOADING - Show shimmer effect while loading
   const resultsArea = document.getElementById('resultsArea');
   const noResults = document.getElementById('noResults');
+  
+  if (!resultsArea) {
+    console.error('[showAllGuilds] resultsArea elementi bulunamadı!');
+    return;
+  }
   
   resultsArea.innerHTML = `
     <div class="all-guilds-header">
@@ -3485,6 +3638,773 @@ function showPlakaResults(data) {
 function initNavigation() { console.log('[initNavigation] Stub called'); }
 function initStatsUpdate() { console.log('[initStatsUpdate] Stub called'); }
 function initMap() { console.log('[initMap] Stub called'); }
-function showView(view) { console.log('[showView] Stub called for:', view); }
+
+// 🖼️ VİEW YÖNETİMİ - Sayfa görünümlerini değiştir
+function showView(view) {
+  console.log('[showView] View değiştiriliyor:', view);
+  
+  // Tüm view section'ları gizle
+  const views = ['home', 'search', 'results', 'guilds', 'admin', 'email', 'stats', 'map', 'settings'];
+  views.forEach(v => {
+    const el = document.getElementById(v + 'View') || document.getElementById(v);
+    if (el) el.classList.add('hidden');
+  });
+  
+  // İstenen view'i göster
+  let targetView = document.getElementById(view + 'View') || document.getElementById(view);
+  if (targetView) {
+    targetView.classList.remove('hidden');
+  } else {
+    // Ana container'ı kontrol et
+    const mainContainer = document.getElementById('mainContainer') || document.querySelector('.main-container');
+    if (mainContainer) {
+      console.log('[showView] View elementi bulunamadı, ana container gösteriliyor');
+      mainContainer.classList.remove('hidden');
+    }
+  }
+  
+  // Navbar aktif durumunu güncelle
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.classList.remove('active');
+    if (item.dataset.view === view || item.getAttribute('href')?.includes(view)) {
+      item.classList.add('active');
+    }
+  });
+}
+
 function setupKeyboardShortcuts() { console.log('[setupKeyboardShortcuts] Stub called'); }
 function setupBeforeUnload() { console.log('[setupBeforeUnload] Stub called'); }
+
+// 🆔 TC SORGU SONUÇLARI GÖRÜNÜMÜ
+function createTcResultsView(data) {
+  const container = document.createElement('div');
+  container.className = 'tc-results';
+  
+  let html = `
+    <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); padding: 20px; border-radius: 16px; margin-bottom: 20px;">
+      <h3 style="margin: 0 0 15px 0; color: white; font-size: 18px;">
+        🆔 TC Sorgu Sonuçları
+        <span style="background: rgba(255,255,255,0.2); padding: 4px 12px; border-radius: 12px; font-size: 12px; margin-left: 10px;">
+          ${data.count || 0} kayıt
+        </span>
+      </h3>
+      <div style="color: rgba(255,255,255,0.9); font-size: 14px;">
+        <strong>Sorgulanan TC:</strong> ${escapeHtml(data.query || '')}
+      </div>
+    </div>
+  `;
+  
+  if (data.results && data.results.length > 0) {
+    data.results.forEach((person, index) => {
+      html += `
+        <div style="background: rgba(0,0,0,0.3); padding: 20px; border-radius: 12px; margin-bottom: 15px; border-left: 4px solid #5865F2;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div>
+              <div style="color: #72767d; font-size: 12px; margin-bottom: 4px;">Ad</div>
+              <div style="color: white; font-weight: 600;">${escapeHtml(person.first_name || person.ad || '—')}</div>
+            </div>
+            <div>
+              <div style="color: #72767d; font-size: 12px; margin-bottom: 4px;">Soyad</div>
+              <div style="color: white; font-weight: 600;">${escapeHtml(person.last_name || person.soyad || '—')}</div>
+            </div>
+            <div>
+              <div style="color: #72767d; font-size: 12px; margin-bottom: 4px;">TC Kimlik No</div>
+              <div style="color: #00d4aa; font-weight: 600; font-family: monospace;">${escapeHtml(person.tc || person.tc_no || person.tckn || data.query)}</div>
+            </div>
+            <div>
+              <div style="color: #72767d; font-size: 12px; margin-bottom: 4px;">Doğum Tarihi</div>
+              <div style="color: white;">${escapeHtml(person.birth_date || person.dogum_tarihi || '—')}</div>
+            </div>
+            <div>
+              <div style="color: #72767d; font-size: 12px; margin-bottom: 4px;">Cinsiyet</div>
+              <div style="color: white;">${escapeHtml(person.gender || person.cinsiyet || '—')}</div>
+            </div>
+            <div>
+              <div style="color: #72767d; font-size: 12px; margin-bottom: 4px;">Şehir</div>
+              <div style="color: white;">${escapeHtml(person.city || person.il || '—')}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+  } else {
+    html += `
+      <div style="text-align: center; padding: 40px; color: #72767d;">
+        <div style="font-size: 48px; margin-bottom: 15px;">🔍</div>
+        <div>Sonuç bulunamadı</div>
+      </div>
+    `;
+  }
+  
+  if (data.has_more) {
+    html += `<div style="text-align: center; color: #72767d; margin-top: 20px; font-size: 13px;">Daha fazla sonuç var...</div>`;
+  }
+  
+  container.innerHTML = html;
+  return container;
+}
+
+// 👤 AD SOYAD SORGU SONUÇLARI GÖRÜNÜMÜ
+function createAdSoyadResultsView(data) {
+  const container = document.createElement('div');
+  container.className = 'adsoyad-results';
+  
+  const demoBadge = data.demo_mode ? '<span style="background:#FAA61A;color:#000;padding:4px 8px;border-radius:4px;font-size:12px;margin-left:10px;">DEMO MOD</span>' : '';
+  
+  let html = `
+    <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);border:1px solid #ED4245;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <h3 style="color:#ED4245;margin-bottom:15px;display:flex;align-items:center;gap:10px;">
+        👤 101M Ad Soyad Veritabanı ${demoBadge}
+      </h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px;margin-bottom:20px;">
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#3BA55D;">${data.total || 0}</div>
+          <div style="font-size:12px;color:#b9bbbe;">Toplam Sonuç</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#5865F2;">${data.returned || 0}</div>
+          <div style="font-size:12px;color:#b9bbbe;">Gösterilen</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#FAA61A;">${(data.database_size || 0).toLocaleString()}</div>
+          <div style="font-size:12px;color:#b9bbbe;">Veritabanı</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#ED4245;">${data.search_time_ms || 0}ms</div>
+          <div style="font-size:12px;color:#b9bbbe;">Arama Süresi</div>
+        </div>
+      </div>
+  `;
+  
+  if (data.results?.length > 0) {
+    html += `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:rgba(237,66,69,0.2);">
+              <th style="padding:12px;text-align:left;color:#ED4245;font-size:13px;border-bottom:2px solid #ED4245;">👤 Kişi</th>
+              <th style="padding:12px;text-align:left;color:#ED4245;font-size:13px;border-bottom:2px solid #ED4245;">🆔 TCKN</th>
+              <th style="padding:12px;text-align:left;color:#ED4245;font-size:13px;border-bottom:2px solid #ED4245;">📅 Doğum</th>
+              <th style="padding:12px;text-align:left;color:#ED4245;font-size:13px;border-bottom:2px solid #ED4245;">👨‍👩‍👧 Aile</th>
+              <th style="padding:12px;text-align:left;color:#ED4245;font-size:13px;border-bottom:2px solid #ED4245;">📍 Adres</th>
+              <th style="padding:12px;text-align:center;color:#ED4245;font-size:13px;border-bottom:2px solid #ED4245;">📋 Kopyala</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+    
+    data.results.forEach((r, i) => {
+      const bg = i % 2 === 0 ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)';
+      const genderIcon = r.gender === 'Erkek' ? '♂️' : '♀️';
+      const genderColor = r.gender === 'Erkek' ? '#5865F2' : '#ED4245';
+      html += `
+        <tr style="background:${bg};transition:background 0.2s;" onmouseover="this.style.background='rgba(237,66,69,0.2)'" onmouseout="this.style.background='${bg}'">
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:20px;">${genderIcon}</span>
+              <div>
+                <div style="color:#fff;font-size:15px;font-weight:bold;">${r.full_name}</div>
+                <div style="color:${genderColor};font-size:11px;">${r.gender} | ${r.age} yaş</div>
+                <div style="color:#666;font-size:10px;">${r.status}</div>
+              </div>
+            </div>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <span style="font-family:monospace;font-size:14px;color:#FAA61A;font-weight:bold;">${r.tc_no}</span>
+            <div style="color:#666;font-size:10px;margin-top:2px;">${r.blood_type}</div>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <div style="color:#fff;font-size:13px;">${r.birth_date}</div>
+            <div style="color:#b9bbbe;font-size:11px;">${r.birth_city}</div>
+            <div style="color:#666;font-size:10px;">${r.marital_status}</div>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <div style="color:#b9bbbe;font-size:12px;">
+              <div>👩 Anne: ${r.mother_name}</div>
+              <div>👨 Baba: ${r.father_name}</div>
+            </div>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <div style="color:#fff;font-size:13px;">${r.current_city}</div>
+            <div style="color:#b9bbbe;font-size:11px;">${r.district}</div>
+            <div style="color:#666;font-size:10px;">${r.neighborhood}</div>
+            <div style="color:#3BA55D;font-size:10px;" title="${r.address}">📍 ${r.address.substring(0, 30)}...</div>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);text-align:center;">
+            <button onclick="copyVal('${r.tc_no}')" style="background:#ED4245;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:11px;margin-bottom:4px;width:100%;">📋 TC</button>
+            <button onclick="copyVal('${r.phone}')" style="background:#3BA55D;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:11px;margin-bottom:4px;width:100%;">📞 Tel</button>
+            <button onclick="copyVal('${r.full_name}')" style="background:#5865F2;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:11px;width:100%;">👤 İsim</button>
+          </td>
+        </tr>
+      `;
+    });
+    
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+  } else {
+    html += `
+      <div style="text-align:center;padding:40px;color:#b9bbbe;">
+        <div style="font-size:48px;margin-bottom:10px;">👤</div>
+        <div>Sonuç bulunamadı.</div>
+      </div>
+    `;
+  }
+  
+  if (data.demo_mode) {
+    html += `
+      <div style="background:rgba(250,166,26,0.1);border:1px solid #FAA61A;border-radius:8px;padding:15px;margin-top:20px;">
+        <div style="color:#FAA61A;font-size:13px;">
+          <strong>⚠️ Demo Mod:</strong> Gerçek 101M Ad Soyad veritabanı yüklenmemiş. Şu anda demo verileri gösteriliyor.
+          Veritabanını yüklemek için <code>101m_adsoyad.json</code> dosyasını <code>/data</code> klasörüne yükleyin.
+        </div>
+      </div>
+    `;
+  }
+  
+  html += '</div>';
+  
+  container.innerHTML = html;
+  return container;
+}
+
+// 🔄 GENERIC SONUÇ GÖRÜNÜMÜ (Yeni sorgu tipleri için)
+function createGenericResultsView(data, title, color) {
+  const container = document.createElement('div');
+  container.className = 'generic-results';
+  
+  const demoBadge = data.demo_mode ? '<span style="background:#FAA61A;color:#000;padding:4px 8px;border-radius:4px;font-size:12px;margin-left:10px;">DEMO MOD</span>' : '';
+  
+  let html = `
+    <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);border:1px solid ${color};border-radius:12px;padding:20px;margin-bottom:20px;">
+      <h3 style="color:${color};margin-bottom:15px;display:flex;align-items:center;gap:10px;">
+        ${title} ${demoBadge}
+      </h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px;margin-bottom:20px;">
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#3BA55D;">${data.total || 0}</div>
+          <div style="font-size:12px;color:#b9bbbe;">Toplam Sonuç</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:${color};">${data.returned || 0}</div>
+          <div style="font-size:12px;color:#b9bbbe;">Gösterilen</div>
+        </div>
+      </div>
+  `;
+  
+  if (data.results?.length > 0) {
+    html += `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:${color}20;">
+              <th style="padding:12px;text-align:left;color:${color};font-size:13px;border-bottom:2px solid ${color};">📋 ID</th>
+              <th style="padding:12px;text-align:left;color:${color};font-size:13px;border-bottom:2px solid ${color};">👤 İsim</th>
+              <th style="padding:12px;text-align:left;color:${color};font-size:13px;border-bottom:2px solid ${color};">📍 Konum</th>
+              <th style="padding:12px;text-align:left;color:${color};font-size:13px;border-bottom:2px solid ${color};">ℹ️ Detaylar</th>
+              <th style="padding:12px;text-align:center;color:${color};font-size:13px;border-bottom:2px solid ${color};">📋 Kopyala</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+    
+    data.results.forEach((r, i) => {
+      const bg = i % 2 === 0 ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)';
+      const name = r.full_name || r.student_name || r.display_name || `${r.first_name} ${r.last_name}` || '-';
+      const location = r.city || r.location || r.district || '-';
+      
+      // Detay objesini oluştur
+      let details = '';
+      const excludeFields = ['id', 'first_name', 'last_name', 'full_name', 'city', 'district', 'location', 'student_name', 'display_name'];
+      Object.entries(r).forEach(([key, value]) => {
+        if (!excludeFields.includes(key) && value && value !== 'null' && value !== '-') {
+          details += `<div style="color:#b9bbbe;font-size:11px;">${key}: <span style="color:#fff;">${value}</span></div>`;
+        }
+      });
+      
+      html += `
+        <tr style="background:${bg};transition:background 0.2s;" onmouseover="this.style.background='${color}20'" onmouseout="this.style.background='${bg}'">
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <span style="font-family:monospace;font-size:13px;color:${color};font-weight:bold;">${r.id || '-'}</span>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <div style="color:#fff;font-size:14px;font-weight:bold;">${name}</div>
+            ${r.tc_no ? `<div style="color:#FAA61A;font-size:10px;">TC: ${r.tc_no}</div>` : ''}
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <div style="color:#fff;font-size:13px;">${location}</div>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            ${details}
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);text-align:center;">
+            <button onclick="copyVal('${r.id || ''}')" style="background:${color};color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;">📋</button>
+          </td>
+        </tr>
+      `;
+    });
+    
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+  } else {
+    html += `
+      <div style="text-align:center;padding:40px;color:#b9bbbe;">
+        <div style="font-size:48px;margin-bottom:10px;">🔍</div>
+        <div>Sonuç bulunamadı.</div>
+      </div>
+    `;
+  }
+  
+  if (data.demo_mode) {
+    html += `
+      <div style="background:rgba(250,166,26,0.1);border:1px solid #FAA61A;border-radius:8px;padding:15px;margin-top:20px;">
+        <div style="color:#FAA61A;font-size:13px;">
+          <strong>⚠️ Demo Mod:</strong> Gerçek veritabanı yüklenmemiş. Şu anda demo verileri gösteriliyor.
+        </div>
+      </div>
+    `;
+  }
+  
+  html += '</div>';
+  
+  container.innerHTML = html;
+  return container;
+}
+
+// 💉 AŞI SORGU SONUÇLARI GÖRÜNÜMÜ
+function createAsiResultsView(data) {
+  const container = document.createElement('div');
+  container.className = 'asi-results';
+  
+  const demoBadge = data.demo_mode ? '<span style="background:#FAA61A;color:#000;padding:4px 8px;border-radius:4px;font-size:12px;margin-left:10px;">DEMO MOD</span>' : '';
+  
+  let html = `
+    <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);border:1px solid #3BA55D;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <h3 style="color:#3BA55D;margin-bottom:15px;display:flex;align-items:center;gap:10px;">
+        💉 10M Aşı Sorgu Veritabanı ${demoBadge}
+      </h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px;margin-bottom:20px;">
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#3BA55D;">${data.total_people || 0}</div>
+          <div style="font-size:12px;color:#b9bbbe;">Kişi</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#5865F2;">${data.total_records || 0}</div>
+          <div style="font-size:12px;color:#b9bbbe;">Toplam Doz</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#FAA61A;">${(data.database_size || 0).toLocaleString()}</div>
+          <div style="font-size:12px;color:#b9bbbe;">Veritabanı</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#ED4245;">${data.search_time_ms || 0}ms</div>
+          <div style="font-size:12px;color:#b9bbbe;">Arama Süresi</div>
+        </div>
+      </div>
+  `;
+  
+  if (data.people?.length > 0) {
+    html += `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:rgba(59,165,93,0.2);">
+              <th style="padding:12px;text-align:left;color:#3BA55D;font-size:13px;border-bottom:2px solid #3BA55D;">👤 Kişi</th>
+              <th style="padding:12px;text-align:left;color:#3BA55D;font-size:13px;border-bottom:2px solid #3BA55D;">📍 Konum</th>
+              <th style="padding:12px;text-align:left;color:#3BA55D;font-size:13px;border-bottom:2px solid #3BA55D;">💉 Aşılar</th>
+              <th style="padding:12px;text-align:center;color:#3BA55D;font-size:13px;border-bottom:2px solid #3BA55D;">📋 İşlemler</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+    
+    data.people.forEach((person, i) => {
+      const bg = i % 2 === 0 ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)';
+      const genderIcon = person.gender === 'Erkek' ? '♂️' : '♀️';
+      const genderColor = person.gender === 'Erkek' ? '#5865F2' : '#ED4245';
+      
+      // Aşı kartlarını oluştur
+      let dosesHtml = '';
+      person.doses?.forEach(dose => {
+        const vaccineIcon = dose.vaccine_type?.includes('Sinovac') ? '🇨🇳' : 
+                          dose.vaccine_type?.includes('Biontech') ? '🇩🇪' :
+                          dose.vaccine_type?.includes('Turkovac') ? '🇹🇷' : '💉';
+        dosesHtml += `
+          <div style="background:rgba(59,165,93,0.1);border:1px solid rgba(59,165,93,0.3);border-radius:6px;padding:8px;margin-bottom:6px;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              <span>${vaccineIcon}</span>
+              <span style="color:#3BA55D;font-weight:bold;font-size:12px;">${dose.dose_number}</span>
+              <span style="color:#fff;font-size:11px;">${dose.vaccine_type}</span>
+            </div>
+            <div style="color:#b9bbbe;font-size:10px;display:flex;gap:10px;">
+              <span>📅 ${dose.vaccine_date}</span>
+              <span>🏥 ${dose.vaccine_center?.substring(0, 20)}...</span>
+            </div>
+            <div style="color:#666;font-size:9px;margin-top:2px;">
+              Lot: ${dose.lot_number} | SN: ${dose.serial_number?.substring(0, 15)}...
+            </div>
+            <div style="color:#FAA61A;font-size:9px;margin-top:2px;">
+              👨‍⚕️ ${dose.doctor_name} ${dose.side_effect !== 'Yok' ? `| ⚠️ ${dose.side_effect}` : ''}
+            </div>
+          </div>
+        `;
+      });
+      
+      html += `
+        <tr style="background:${bg};transition:background 0.2s;" onmouseover="this.style.background='rgba(59,165,93,0.2)'" onmouseout="this.style.background='${bg}'">
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:20px;">${genderIcon}</span>
+              <div>
+                <div style="color:#fff;font-size:15px;font-weight:bold;">${person.full_name}</div>
+                <div style="color:${genderColor};font-size:11px;">${person.gender} | ${person.age} yaş</div>
+                <div style="color:#FAA61A;font-size:10px;font-family:monospace;">TC: ${person.tc_no}</div>
+              </div>
+            </div>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <div style="color:#fff;font-size:14px;">${person.city}</div>
+            <div style="color:#b9bbbe;font-size:11px;">${person.total_doses} Doz</div>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            ${dosesHtml}
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);text-align:center;">
+            <button onclick="copyVal('${person.tc_no}')" style="background:#ED4245;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:11px;margin-bottom:4px;width:100%;">📋 TC</button>
+            <button onclick="copyVal('${person.full_name}')" style="background:#3BA55D;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:11px;width:100%;">👤 İsim</button>
+          </td>
+        </tr>
+      `;
+    });
+    
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+  } else {
+    html += `
+      <div style="text-align:center;padding:40px;color:#b9bbbe;">
+        <div style="font-size:48px;margin-bottom:10px;">💉</div>
+        <div>Aşı kaydı bulunamadı.</div>
+      </div>
+    `;
+  }
+  
+  if (data.demo_mode) {
+    html += `
+      <div style="background:rgba(250,166,26,0.1);border:1px solid #FAA61A;border-radius:8px;padding:15px;margin-top:20px;">
+        <div style="color:#FAA61A;font-size:13px;">
+          <strong>⚠️ Demo Mod:</strong> Gerçek 10M Aşı veritabanı yüklenmemiş. Şu anda demo verileri gösteriliyor.
+          Veritabanını yüklemek için <code>asi10m.json</code> dosyasını <code>/data</code> klasörüne yükleyin.
+        </div>
+      </div>
+    `;
+  }
+  
+  html += '</div>';
+  
+  container.innerHTML = html;
+  return container;
+}
+
+// 🆔 KİMLİK OLUŞTURUCU FONKSİYONLARI - Roswell Check tarzı
+// https://sahtekimlikolusturucu.github.io/ referans alınarak yapılmıştır
+
+// Kimlik oluştur butonu event listener
+document.addEventListener('DOMContentLoaded', () => {
+  // Kimlik oluştur butonu
+  const generateBtn = document.getElementById('generateIdCardBtn');
+  if (generateBtn) {
+    generateBtn.addEventListener('click', generateIdCard);
+  }
+  
+  // Temizle butonu
+  const clearBtn = document.getElementById('clearIdCardBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', clearIdCardForm);
+  }
+  
+  // İndir butonları
+  const downloadFrontBtn = document.getElementById('downloadFrontBtn');
+  if (downloadFrontBtn) {
+    downloadFrontBtn.addEventListener('click', () => downloadIdCard('front'));
+  }
+  
+  const downloadBackBtn = document.getElementById('downloadBackBtn');
+  if (downloadBackBtn) {
+    downloadBackBtn.addEventListener('click', () => downloadIdCard('back'));
+  }
+  
+  // TCKN input validation (sadece rakam)
+  const tcknInput = document.getElementById('idCardTckn');
+  if (tcknInput) {
+    tcknInput.addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 11);
+    });
+  }
+  
+  // İsim/Soyisim validation (sadece harf ve boşluk)
+  ['idCardName', 'idCardSurname', 'idCardMother', 'idCardFather'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) {
+      input.addEventListener('input', (e) => {
+        e.target.value = e.target.value.replace(/[^a-zA-ZğüşıöçĞÜŞİÖÇ\s]/g, '');
+      });
+    }
+  });
+  
+  // Varsayılan tarihleri ayarla
+  const birthDateInput = document.getElementById('idCardBirthDate');
+  if (birthDateInput) {
+    birthDateInput.value = '1990-01-01';
+  }
+  
+  const validDateInput = document.getElementById('idCardValid');
+  if (validDateInput) {
+    const futureDate = new Date();
+    futureDate.setFullYear(futureDate.getFullYear() + 10);
+    validDateInput.value = futureDate.toISOString().split('T')[0];
+  }
+});
+
+// Kimlik oluşturma fonksiyonu
+async function generateIdCard() {
+  const btn = document.getElementById('generateIdCardBtn');
+  const resultsDiv = document.getElementById('idCardResults');
+  
+  try {
+    // Form verilerini al
+    const name = document.getElementById('idCardName')?.value?.trim();
+    const surname = document.getElementById('idCardSurname')?.value?.trim();
+    const birthDate = document.getElementById('idCardBirthDate')?.value;
+    const gender = document.getElementById('idCardGender')?.value;
+    const tckn = document.getElementById('idCardTckn')?.value?.trim();
+    const docNo = document.getElementById('idCardDocNo')?.value?.trim();
+    const validUntil = document.getElementById('idCardValid')?.value;
+    const motherName = document.getElementById('idCardMother')?.value?.trim();
+    const fatherName = document.getElementById('idCardFather')?.value?.trim();
+    const imageFile = document.getElementById('idCardImage')?.files?.[0];
+    
+    // Validasyon
+    if (!name || !surname || !birthDate || !tckn || !docNo) {
+      showToast('❌ Eksik alanlar! İsim, soyisim, doğum tarihi, TCKN ve seri no zorunludur.', 'error');
+      return;
+    }
+    
+    if (tckn.length !== 11) {
+      showToast('❌ TCKN 11 haneli olmalıdır!', 'error');
+      return;
+    }
+    
+    // Butonu loading yap
+    btn.disabled = true;
+    btn.textContent = '🔄 Oluşturuluyor...';
+    
+    // Fotoğraf varsa base64'e çevir
+    let imageBase64 = null;
+    if (imageFile) {
+      imageBase64 = await fileToBase64(imageFile);
+    }
+    
+    // API isteği
+    const response = await api('/api/id-card/generate', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: name.toUpperCase(),
+        surname: surname.toUpperCase(),
+        birth_date: birthDate,
+        gender: gender,
+        tckn: tckn,
+        document_number: docNo.toUpperCase(),
+        valid_until: validUntil,
+        mother_name: motherName?.toUpperCase(),
+        father_name: fatherName?.toUpperCase(),
+        image_base64: imageBase64
+      })
+    });
+    
+    if (response.ok) {
+      // Sonuçları göster
+      resultsDiv.classList.remove('hidden');
+      
+      // HTML template'leri iframe'lere yükle
+      const frontFrame = document.getElementById('idCardFront');
+      const backFrame = document.getElementById('idCardBack');
+      
+      if (frontFrame) {
+        frontFrame.srcdoc = response.templates?.front || '';
+      }
+      if (backFrame) {
+        backFrame.srcdoc = response.templates?.back || '';
+      }
+      
+      showToast('✅ Kimlik başarıyla oluşturuldu!', 'success');
+      console.log('[Kimlik Oluşturucu] Kimlik oluşturuldu:', response.data);
+    } else {
+      showToast(`❌ Hata: ${response.error || 'Bilinmeyen hata'}`, 'error');
+    }
+  } catch (err) {
+    console.error('[Kimlik Oluşturucu] Hata:', err);
+    showToast(`❌ Hata: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🆔 Kimlik Oluştur';
+  }
+}
+
+// Dosyayı base64'e çevir
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Kimlik formunu temizle
+function clearIdCardForm() {
+  document.getElementById('idCardName').value = '';
+  document.getElementById('idCardSurname').value = '';
+  document.getElementById('idCardTckn').value = '';
+  document.getElementById('idCardDocNo').value = '';
+  document.getElementById('idCardMother').value = '';
+  document.getElementById('idCardFather').value = '';
+  document.getElementById('idCardImage').value = '';
+  document.getElementById('idCardResults').classList.add('hidden');
+  
+  // Tarihleri varsayılana ayarla
+  const birthDateInput = document.getElementById('idCardBirthDate');
+  if (birthDateInput) birthDateInput.value = '1990-01-01';
+  
+  const validDateInput = document.getElementById('idCardValid');
+  if (validDateInput) {
+    const futureDate = new Date();
+    futureDate.setFullYear(futureDate.getFullYear() + 10);
+    validDateInput.value = futureDate.toISOString().split('T')[0];
+  }
+  
+  showToast('🗑️ Form temizlendi', 'info');
+}
+
+// Kimlik yüzünü indir
+function downloadIdCard(side) {
+  const iframe = document.getElementById(side === 'front' ? 'idCardFront' : 'idCardBack');
+  if (!iframe) return;
+  
+  // iframe içeriğini yeni pencerede aç ve yazdırma diyaloğunu aç
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(iframe.srcdoc);
+  printWindow.document.close();
+  
+  // Yazdırma diyaloğunu aç (PDF olarak kaydetmek için)
+  setTimeout(() => {
+    printWindow.print();
+  }, 500);
+  
+  showToast(`📥 ${side === 'front' ? 'Ön' : 'Arka'} yüz indirme penceresi açıldı`, 'success');
+}
+
+// 📱 GSM Arama Sonuçları Görünümü
+function createGSMResultsView(data) {
+  const container = document.createElement('div');
+  container.className = 'gsm-results';
+  
+  const demoBadge = data.demo_mode ? '<span style="background:#FAA61A;color:#000;padding:4px 8px;border-radius:4px;font-size:12px;margin-left:10px;">DEMO MOD</span>' : '';
+  
+  let html = `
+    <div style="background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);border:1px solid #5865F2;border-radius:12px;padding:20px;margin-bottom:20px;">
+      <h3 style="color:#5865F2;margin-bottom:15px;display:flex;align-items:center;gap:10px;">
+        📱 145M GSM Veritabanı ${demoBadge}
+      </h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px;margin-bottom:20px;">
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#3BA55D;">${data.total || 0}</div>
+          <div style="font-size:12px;color:#b9bbbe;">Toplam Sonuç</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#5865F2;">${data.returned || 0}</div>
+          <div style="font-size:12px;color:#b9bbbe;">Gösterilen</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#FAA61A;">${(data.database_size || 0).toLocaleString()}</div>
+          <div style="font-size:12px;color:#b9bbbe;">Veritabanı</div>
+        </div>
+        <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;text-align:center;">
+          <div style="font-size:24px;font-weight:bold;color:#ED4245;">${data.search_time_ms || 0}ms</div>
+          <div style="font-size:12px;color:#b9bbbe;">Arama Süresi</div>
+        </div>
+      </div>
+  `;
+  
+  if (data.results?.length > 0) {
+    html += `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:rgba(88,101,242,0.2);">
+              <th style="padding:12px;text-align:left;color:#5865F2;font-size:13px;border-bottom:2px solid #5865F2;">📱 Telefon</th>
+              <th style="padding:12px;text-align:left;color:#5865F2;font-size:13px;border-bottom:2px solid #5865F2;">👤 İsim</th>
+              <th style="padding:12px;text-align:left;color:#5865F2;font-size:13px;border-bottom:2px solid #5865F2;">📍 Şehir</th>
+              <th style="padding:12px;text-align:left;color:#5865F2;font-size:13px;border-bottom:2px solid #5865F2;">📡 Operatör</th>
+              <th style="padding:12px;text-align:center;color:#5865F2;font-size:13px;border-bottom:2px solid #5865F2;">📋 Kopyala</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+    
+    data.results.forEach((r, i) => {
+      const bg = i % 2 === 0 ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)';
+      html += `
+        <tr style="background:${bg};transition:background 0.2s;" onmouseover="this.style.background='rgba(88,101,242,0.2)'" onmouseout="this.style.background='${bg}'">
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <span style="font-family:monospace;font-size:15px;color:#fff;">${r.phone}</span>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);color:#b9bbbe;">${r.name || '-'}</td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);color:#b9bbbe;">${r.city || '-'}</td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);">
+            <span style="background:rgba(59,165,93,0.2);color:#3BA55D;padding:4px 8px;border-radius:4px;font-size:12px;">${r.operator || '-'}</span>
+          </td>
+          <td style="padding:12px;border-bottom:1px solid rgba(255,255,255,0.1);text-align:center;">
+            <button onclick="copyVal('${r.phone}')" style="background:#5865F2;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;">📋</button>
+          </td>
+        </tr>
+      `;
+    });
+    
+    html += `
+          </tbody>
+        </table>
+      </div>
+    `;
+  } else {
+    html += `
+      <div style="text-align:center;padding:40px;color:#b9bbbe;">
+        <div style="font-size:48px;margin-bottom:10px;">📱</div>
+        <div>Sonuç bulunamadı.</div>
+      </div>
+    `;
+  }
+  
+  if (data.demo_mode) {
+    html += `
+      <div style="background:rgba(250,166,26,0.1);border:1px solid #FAA61A;border-radius:8px;padding:15px;margin-top:20px;">
+        <div style="color:#FAA61A;font-size:13px;">
+          <strong>⚠️ Demo Mod:</strong> Gerçek 145M GSM veritabanı yüklenmemiş. Şu anda demo verileri gösteriliyor.
+          Veritabanını yüklemek için <code>145m_gsm.json</code> dosyasını <code>/data</code> klasörüne yükleyin.
+        </div>
+      </div>
+    `;
+  }
+  
+  html += '</div>';
+  
+  container.innerHTML = html;
+  return container;
+}

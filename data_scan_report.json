@@ -1,0 +1,30 @@
+{
+  "scanDate": "2026-05-02T15:58:00.541Z",
+  "sqlFiles": [
+    "za.sql",
+    "zagros.sql",
+    "zagros1.sql",
+    "zagros2.sql",
+    "zagros3.sql",
+    "zagros4.sql",
+    "zagros5.sql",
+    "zagros6.sql",
+    "zagrs.sql"
+  ],
+  "dbFiles": [
+    "zagros.db"
+  ],
+  "txtFiles": [
+    "dcidsorgudata.txt",
+    "dcıdsorgudata.txt"
+  ],
+  "jsonFiles": [],
+  "summary": {
+    "totalFiles": 12,
+    "totalSql": 9,
+    "totalDb": 1,
+    "totalTxt": 2,
+    "totalJson": 0,
+    "totalSizeMB": 928.34
+  }
+}
