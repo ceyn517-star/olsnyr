@@ -8399,13 +8399,31 @@ const PUBLIC_API_PREFIXES = [
   '/discord/cdn'
 ];
 
+function normalizeMountedApiPath(p) {
+  let s = String(p || '').split('?')[0];
+  if (s.startsWith('/api/')) s = s.slice(4);
+  if (!s.startsWith('/')) s = `/${s}`;
+  return s;
+}
+
+function isPublicApiRequest(req) {
+  const rawCandidates = [
+    req.path,
+    req.originalUrl,
+    req.url,
+    `${req.baseUrl || ''}${req.path || ''}`
+  ].filter(Boolean);
+
+  for (const raw of rawCandidates) {
+    const p = normalizeMountedApiPath(raw);
+    if (PUBLIC_API_PREFIXES.some(prefix => p === prefix || p.startsWith(prefix))) return true;
+  }
+  return false;
+}
+
 app.use('/api', (req, res, next) => {
   if (req.method === 'OPTIONS') return next();
-  let p = String(req.path || '');
-  // Bazı ortamlarda `req.path` "/api/widget/..." şeklinde gelir; allowlist "/widget/..." ile eşleşsin diye normalize et.
-  if (p.startsWith('/api/')) p = p.slice(4);
-  if (!p.startsWith('/')) p = `/${p}`;
-  if (PUBLIC_API_PREFIXES.some(prefix => p === prefix || p.startsWith(prefix))) return next();
+  if (isPublicApiRequest(req)) return next();
   if (req.session?.authed) return next();
   return res.status(401).json({ error: 'unauthorized' });
 });
