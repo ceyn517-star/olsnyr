@@ -8401,7 +8401,10 @@ const PUBLIC_API_PREFIXES = [
 
 app.use('/api', (req, res, next) => {
   if (req.method === 'OPTIONS') return next();
-  const p = req.path || '';
+  let p = String(req.path || '');
+  // Bazı ortamlarda `req.path` "/api/widget/..." şeklinde gelir; allowlist "/widget/..." ile eşleşsin diye normalize et.
+  if (p.startsWith('/api/')) p = p.slice(4);
+  if (!p.startsWith('/')) p = `/${p}`;
   if (PUBLIC_API_PREFIXES.some(prefix => p === prefix || p.startsWith(prefix))) return next();
   if (req.session?.authed) return next();
   return res.status(401).json({ error: 'unauthorized' });
