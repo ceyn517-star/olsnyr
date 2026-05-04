@@ -503,4 +503,19 @@ export async function getCacheStats() {
   }
 }
 
+/** Ücretsiz Discord ID: aynı IP bir kez (SET NX). true = yeni rezervasyon, false = dolu, null = Redis kullanılmadı */
+export async function tryReserveFreeDiscordSearchIp(ipKey) {
+  if (!isRedisReady() || !ipKey) return null;
+  try {
+    const safe = String(ipKey).trim().slice(0, 120);
+    if (!safe || safe === 'unknown') return null;
+    const k = `zagros:free_discord_ip:${safe}`;
+    const ok = await redis.set(k, '1', 'EX', 365 * 86400, 'NX');
+    return ok === 'OK';
+  } catch (err) {
+    console.warn('[Redis] free_discord_ip:', err.message);
+    return null;
+  }
+}
+
 export { redis };
