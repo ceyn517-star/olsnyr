@@ -8278,7 +8278,13 @@ app.post('/api/admin/load-all-data', requireAdmin, async (req, res) => {
 // Simple version endpoint to verify deployed build
 // Public: version endpoint for deployment verification
 app.get('/api/version', (req, res) => {
-  res.json({ ok: true, version: APP_VERSION, note: 'public' });
+  res.json({
+    ok: true,
+    version: APP_VERSION,
+    railway_commit: process.env.RAILWAY_GIT_COMMIT_SHA || null,
+    railway_service: process.env.RAILWAY_SERVICE_NAME || null,
+    note: 'public'
+  });
 });
 
 // Public debug (no secret): OpenArchive key/config visibility
