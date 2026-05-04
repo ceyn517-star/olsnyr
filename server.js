@@ -33,7 +33,7 @@ const ZAGROS_SQL_FILES = [
 // Log deploy version at startup to aid verification in logs/CI
 console.log(`[Deploy] Zagros OSINT deploy ver: ${APP_VERSION} @ ${new Date().toISOString()}`);
 console.log(`[Deploy] ${ZAGROS_SQL_FILES.length} zagros SQL dosyası yapılandırıldı`);
-import { initDB, isDBReady, dbSearchByDiscordId, dbGetUserGuilds, dbSearchByEmail, dbSearchByIp, dbSearchGuildMembers, dbGetAllGuilds, dbFindFriendsByIp, dbSaveGuildName, dbGetGuildName, dbGetStats, dbSearchByField, dbGetUsersByIds, dbListGuildNames, dbDeleteGuildName, dbCreateAllTables, dbCreateTapuTable, dbCreateGSMTable, dbCreateIsyeriTable, dbCreateAdSoyadTable, dbCreateAsiTable, dbCreateYabanciTable, dbCreateAdresTable, dbCreateVesikaTable, dbCreateEokulTable, dbCreateTwitterTable, dbCreateAzerbaycanTable, dbCreateTurknetTable, bulkLoadAllData } from './db.js';
+import { initDB, isDBReady, runQuery, dbSearchByDiscordId, dbGetUserGuilds, dbSearchByEmail, dbSearchByIp, dbSearchGuildMembers, dbGetAllGuilds, dbFindFriendsByIp, dbSaveGuildName, dbGetGuildName, dbGetStats, dbSearchByField, dbGetUsersByIds, dbListGuildNames, dbDeleteGuildName, dbCreateAllTables, dbCreateTapuTable, dbCreateGSMTable, dbCreateIsyeriTable, dbCreateAdSoyadTable, dbCreateAsiTable, dbCreateYabanciTable, dbCreateAdresTable, dbCreateVesikaTable, dbCreateEokulTable, dbCreateTwitterTable, dbCreateAzerbaycanTable, dbCreateTurknetTable, bulkLoadAllData } from './db.js';
 import { scanDataSources, loadAllSql } from './data_sources.js';
 import { initRedis, isRedisReady, getCachedDiscordId, setCachedDiscordId, getCachedEmail, setCachedEmail, getCachedIP, setCachedIP, getCachedFindCord, setCachedFindCord, getCachedStats, setCachedStats, getCachedTapu, setCachedTapu, getCachedGSM, setCachedGSM, getCachedIsyeri, setCachedIsyeri, getCachedAdSoyad, setCachedAdSoyad, getCachedAsi, setCachedAsi, getCachedYabanci, setCachedYabanci, getCachedAdres, setCachedAdres, getCachedVesika, setCachedVesika, getCachedEokul, setCachedEokul, getCachedTwitter, setCachedTwitter, getCachedAzerbaycan, setCachedAzerbaycan } from './redis.js';
 
@@ -107,18 +107,18 @@ function resolveDataDir() {
   // Production'da önce /data dene (Railway volume mount default'u)
   if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT) {
     candidates.push('/data');
+    // Git LFS ile gelen dosyalar için /app/data
+    candidates.push('/app/data');
+    candidates.push(path.join(__dirname, 'data'));
   }
   candidates.push(__dirname);
 
   for (const dir of candidates) {
     try {
-      if (!dir) continue;
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      // yazılabilirlik kontrolü
-      const probe = path.join(dir, '.write_test');
-      fs.writeFileSync(probe, 'ok');
-      fs.unlinkSync(probe);
-      return dir;
+      if (fs.existsSync(dir)) {
+        console.log(`[DataDir] Using: ${dir}`);
+        return dir;
+      }
     } catch {
       // try next
     }
@@ -786,8 +786,14 @@ function requireSubscription(req, res, next) {
 
   // Free kullanıcılar için limit kontrolü
   if (req.session.tier === 'free') {
-    // Kullanım sayısını artır
-    req.session.usageCount = (req.session.usageCount || 0) + 1;
+    // Sunucu listesi / sunucu detay okuması ücretsiz kotayı tüketmesin (yalnızca GET)
+    const skipFreeSearchQuota =
+      req.method === 'GET' &&
+      (req.path === '/api/guilds' ||
+        /^\/api\/guild\/\d{10,30}(\/members)?$/.test(req.path));
+    if (!skipFreeSearchQuota) {
+      req.session.usageCount = (req.session.usageCount || 0) + 1;
+    }
 
     // Limit aşıldı mı?
     if (req.session.usageCount > 1) {
@@ -1013,9 +1019,10 @@ let findCordRateLimitedUntil = 0;
 // Admin oturumları
 const adminSessions = new Map(); // sessionToken -> { adminId, createdAt }
 
-// Guild list cache
+// Guild list cache (limit/offset/sorgu anahtarı ile)
 let guildsCache = null;
 let guildsCacheTime = 0;
+let guildsCacheKey = '';
 const CACHE_TTL = 5 * 60 * 1000; // 5 dakika cache
 const GUILDS_MAX_TIME = 15000; // 15 saniye max
 
@@ -2833,6 +2840,10 @@ function validateEmail(email) {
 // Bu yüzden burada RAW response dönüyoruz.
 async function getFindCordData(userId) {
   try {
+    if (!FINDCORD_API_KEY) {
+      return null;
+    }
+
     if (Date.now() < findCordRateLimitedUntil) {
       console.log(`[FindCord] Rate limit aktif, ${userId} için atlanıyor`);
       return null;
@@ -2851,7 +2862,7 @@ async function getFindCordData(userId) {
       headers: {
         'Authorization': FINDCORD_API_KEY,
         'Accept': 'application/json',
-        'User-Agent': 'ZagrosOSINT/1.0'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
       },
       timeout: API_TIMEOUT,
       validateStatus: (status) => status < 500 // 5xx hataları için reject etme
@@ -2871,6 +2882,12 @@ async function getFindCordData(userId) {
       return null;
     }
     
+    if (response.status === 403) {
+      console.log(`[FindCord] HTTP 403: ${userId} — API anahtarı geçersiz, süresi dolmuş veya istek IP’si reddedildi`);
+      findCordCache.set(cacheKey, { time: Date.now(), ttl: FINDCORD_NEG_TTL_MS, data: null });
+      return null;
+    }
+
     if (response.status !== 200) {
       console.log(`[FindCord] HTTP ${response.status}: ${userId}`);
       findCordCache.set(cacheKey, { time: Date.now(), ttl: FINDCORD_NEG_TTL_MS, data: null });
@@ -2960,7 +2977,7 @@ function normalizeFindCordData(userId, data) {
   const rawGuilds = raw.Guilds || raw.guilds || raw.Servers || raw.servers || [];
   if (Array.isArray(rawGuilds)) {
     guilds = rawGuilds.map(g => {
-      const guildId = g.id || g.Id || g.guild_id || g.GuildId || g.GuildID || '';
+      const guildId = String(g.id ?? g.Id ?? g.guild_id ?? g.GuildId ?? g.GuildID ?? g.server_id ?? g.ServerId ?? '').trim();
       const iconHash = g.icon || g.Icon || g.guild_icon || g.GuildIcon || null;
       const bannerHash = g.banner || g.Banner || g.guild_banner || g.GuildBanner || null;
       
@@ -3228,27 +3245,6 @@ function buildDefaultGuildBannerUrl(guildId, guildName) {
   <text x="80" y="492" font-family="monospace" font-size="22" fill="rgba(0,255,0,0.65)">discord.gg/zagros</text>
 </svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-// Discord Widget API - Herkese açık, token gerekmez!
-async function fetchDiscordWidget(guildId) {
-  try {
-    const res = await axios.get(`https://discord.com/api/v9/guilds/${guildId}/widget.json`, {
-      timeout: 3000, // Daha kısa timeout
-      headers: { 'Accept': 'application/json' }
-    });
-    if (res.data?.name) {
-      return {
-        name: res.data.name,
-        instant_invite: res.data.instant_invite || null,
-        presence_count: res.data.presence_count || 0,
-        source: 'widget'
-      };
-    }
-  } catch (e) {
-    // Widget kapalı olabilir, 404 normal
-  }
-  return null;
 }
 
 // Disboard.org'dan sunucu ismi çek - daha esnek parsing
@@ -3796,71 +3792,270 @@ async function fetchDCFlowLeaderboard(limit = 50) {
   }
 }
 
-// 🔄 CYR0NIX MUTUALS API - Ortak Sunucular ve Kullanıcı Bilgileri
-const CYR0NIX_API_KEY = process.env.CYR0NIX_API_KEY || 'P1a2iStU*lceZlXAphldRAcO9lB2ijIxizl9lspA?RuhenuGuw3IPR3pIkeGaCRi';
-const CYR0NIX_API_URL = 'https://api.cyr0nix.com/mutuals';
+// 🔄 CYR0NIX MUTUALS API — anahtar sadece env (üretimde asla repo içine yazmayın)
+const CYR0NIX_API_KEY = (process.env.CYR0NIX_API_KEY || '').trim();
+const CYR0NIX_API_BASE = (process.env.CYR0NIX_API_URL || 'https://api.cyr0nix.com/mutuals').replace(/\/+$/, '');
 
-// Cyr0nix API'den kullanıcı bilgileri ve ortak sunucuları çek
-async function fetchCyr0nixMutuals(discordId) {
-  if (!CYR0NIX_API_KEY || !discordId) {
-    console.log('[Cyr0nix] API key veya Discord ID eksik');
+/** JSON içindeki Discord kar tanesi alanlarını tırnaklı string yap — JS Number güvenli aralığı dışında bozulmayı önler */
+function parseJsonPreserveDiscordSnowflakes(raw) {
+  if (raw == null || raw === '') return null;
+  const s = typeof raw === 'string' ? raw : String(raw);
+  const fixed = s.replace(
+    /"(userId|user_id|discordId|discord_id|id|guild_id|GuildId|server_id|guildId)"\s*:\s*(\d{15,30})(?=\s*[\,\}\]])/gi,
+    '"$1":"$2"'
+  );
+  return JSON.parse(fixed);
+}
+
+// 🎯 DISCORD WIDGET API - Sunucu bilgilerini çek (API Key gerekmez)
+async function fetchDiscordWidget(guildId) {
+  try {
+    const endpoints = [
+      `https://discord.com/api/guilds/${guildId}/widget.json`,
+      `https://discordapp.com/api/guilds/${guildId}/widget.json`,
+      `https://cdn.discordapp.com/guilds/${guildId}/widget.json`
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const response = await axios.get(endpoint, {
+          timeout: 5000,
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          },
+          validateStatus: (status) => status < 500
+        });
+        
+        if (response.status === 200 && response.data) {
+          const data = response.data;
+          return {
+            guild_id: guildId,
+            name: data.name,
+            instant_invite: data.instant_invite,
+            presence_count: data.presence_count,
+            member_count: data.members?.length || 0,
+            channels: data.channels || [],
+            widget_enabled: true,
+            // Widget üyelerini işle
+            members: (data.members || []).slice(0, 100).map(m => ({
+              discord_id: m.id,
+              username: m.username,
+              avatar_url: m.avatar_url,
+              status: m.status,
+              game: m.game?.name || null,
+              source: 'widget_api'
+            }))
+          };
+        }
+      } catch (e) {
+        // Sonraki endpoint'i dene
+      }
+    }
+    return null;
+  } catch (error) {
     return null;
   }
+}
+
+// Discord Bot API ile sunucu bilgisi çek (Bot token gerekli)
+async function fetchDiscordBotGuild(guildId) {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) return null;
   
   try {
-    console.log(`[Cyr0nix] Kullanıcı bilgileri çekiliyor: ${discordId}`);
-    const startTime = Date.now();
-    
-    const response = await axios.get(CYR0NIX_API_URL, {
+    const response = await axios.get(`https://discord.com/api/v10/guilds/${guildId}`, {
       headers: {
-        'Authorization': CYR0NIX_API_KEY,
-        'user-id': String(discordId),
-        'Accept': 'application/json',
-        'User-Agent': 'ZagrosOSINT/1.0'
+        'Authorization': `Bot ${botToken}`,
+        'Accept': 'application/json'
       },
-      timeout: 10000
+      timeout: 5000
     });
     
-    const data = response.data;
-    
-    if (!data || !data.userId) {
-      console.log(`[Cyr0nix] Kullanıcı bulunamadı: ${discordId}`);
-      return null;
-    }
-    
-    console.log(`[Cyr0nix] ${data.mutualCount || 0} ortak sunucu bulundu (${Date.now() - startTime}ms)`);
-    
-    return {
-      userId: data.userId,
-      username: data.username,
-      avatar: data.avatar,
-      banner: data.banner,
-      mutualCount: data.mutualCount || 0,
-      mutualGuilds: (data.mutualGuilds || []).map(g => ({
+    if (response.data) {
+      const g = response.data;
+      return {
         guild_id: g.id,
         name: g.name,
         icon: g.icon,
         banner: g.banner,
-        member_avatar: g.memberAvatar,
-        member_nickname: g.memberNickname,
-        roles: g.roles || [],
-        source: 'cyr0nix'
-      })),
-      fetched_at: new Date().toISOString()
-    };
-    
-  } catch (error) {
-    if (error.response?.status === 404) {
-      console.log(`[Cyr0nix] Kullanıcı bulunamadı: ${discordId}`);
-    } else if (error.response?.status === 401) {
-      console.log('[Cyr0nix] API anahtarı geçersiz');
-    } else if (error.response?.status === 502) {
-      console.log('[Cyr0nix] Self-bot servisi yanıt vermiyor');
-    } else {
-      console.log(`[Cyr0nix] Hata: ${error.message}`);
+        description: g.description,
+        member_count: g.approximate_member_count || g.member_count,
+        presence_count: g.approximate_presence_count,
+        widget_enabled: g.widget_enabled,
+        verification_level: g.verification_level,
+        premium_tier: g.premium_tier,
+        source: 'bot_api'
+      };
     }
+  } catch (error) {
+    // 404 = sunucu bulunamadı veya bot üyesi değil
+  }
+  return null;
+}
+
+// Cyr0nix API'den kullanıcı bilgileri ve ortak sunucuları çek (RETRY ve alternatif)
+async function fetchCyr0nixMutuals(discordId, retries = 1) {
+  if (!discordId) {
+    console.log('[Cyr0nix] Discord ID eksik');
     return null;
   }
+  if (!CYR0NIX_API_KEY) {
+    console.log('[Cyr0nix] CYR0NIX_API_KEY tanımlı değil — ortak sunucu sorgusu atlandı');
+    return { api_status: 'disabled', error: 'no_api_key' };
+  }
+
+  const extraFromEnv = (process.env.CYR0NIX_EXTRA_ENDPOINTS || '')
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const endpoints = [
+    CYR0NIX_API_BASE,
+    `${CYR0NIX_API_BASE}?userId=${encodeURIComponent(String(discordId))}`,
+    `https://api.cyr0nix.com/mutuals/${encodeURIComponent(String(discordId))}`,
+    'https://api.cyr0nix.com/v1/mutuals',
+    'https://cyr0nix.com/api/mutuals',
+    ...extraFromEnv
+  ].filter((u, idx, a) => a.indexOf(u) === idx);
+
+  const authPrimary = [
+    { Authorization: CYR0NIX_API_KEY, 'user-id': String(discordId) },
+    { Authorization: `Bearer ${CYR0NIX_API_KEY}`, 'user-id': String(discordId) },
+    { 'X-API-Key': CYR0NIX_API_KEY, 'user-id': String(discordId) }
+  ];
+  const authFallback = [{ Authorization: CYR0NIX_API_KEY, 'user-id': String(discordId) }];
+
+  for (let ei = 0; ei < endpoints.length; ei++) {
+    const endpoint = endpoints[ei];
+    const authHeaderSets = ei === 0 ? authPrimary : authFallback;
+    for (const authHdr of authHeaderSets) {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        console.log(`[Cyr0nix] Deneme: ${endpoint} (attempt ${i + 1}/${retries + 1})`);
+        const startTime = Date.now();
+
+        const response = await axios.get(endpoint, {
+          responseType: 'text',
+          headers: {
+            ...authHdr,
+            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'X-Client-Version': '2.0'
+          },
+          timeout: 12000 + (i * 4000),
+          validateStatus: (status) => status < 500 // 4xx hatalarını da al
+        });
+        
+        // 403 veya 429 rate limit
+        if (response.status === 403 || response.status === 429) {
+          console.log(`[Cyr0nix] ⚠️ ${response.status} - Rate limit veya ban`);
+          if (i < retries) {
+            await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+            continue;
+          }
+          break; // Diğer endpoint'i dene
+        }
+        
+        if (response.status !== 200) {
+          console.log(`[Cyr0nix] ⚠️ HTTP ${response.status}`);
+          break; // Diğer endpoint'i dene
+        }
+
+        let data = {};
+        try {
+          data = parseJsonPreserveDiscordSnowflakes(response.data) || {};
+        } catch {
+          try {
+            data = JSON.parse(response.data) || {};
+          } catch {
+            data = {};
+          }
+        }
+        const rawGuilds = data.mutualGuilds ?? data.mutual_guilds ?? data.guilds ?? data.Guilds ?? [];
+        const username = data.username ?? data.user?.username ?? data.User?.Username ?? data.user?.userName ?? null;
+        const globalName = data.global_name ?? data.globalName ?? data.display_name ?? data.displayName
+          ?? data.user?.global_name ?? data.user?.GlobalName ?? data.User?.GlobalName ?? null;
+        const discriminator = data.discriminator ?? data.discrim ?? data.user?.discriminator ?? null;
+        const accentColor = data.accent_color ?? data.accentColor ?? data.user?.accent_color ?? null;
+        const avatar = data.avatar ?? data.user?.avatar ?? data.avatar_hash ?? null;
+        const banner = data.banner ?? data.user?.banner ?? data.banner_hash ?? null;
+
+        const rawUserId = data?.userId ?? data?.user_id ?? data?.discordId ?? data?.discord_id
+          ?? data?.user?.id ?? data?.User?.Id;
+        let userIdNorm = rawUserId != null ? String(rawUserId).trim() : '';
+        const hasProfile = !!(username || globalName || avatar || banner || (Array.isArray(rawGuilds) && rawGuilds.length));
+        if (!userIdNorm && hasProfile) {
+          userIdNorm = String(discordId);
+        }
+        try {
+          if (userIdNorm && discordId && BigInt(userIdNorm) !== BigInt(String(discordId)) && hasProfile) {
+            userIdNorm = String(discordId);
+          }
+        } catch { /* ignore BigInt */ }
+
+        if (!data || !userIdNorm) {
+          console.log(`[Cyr0nix] Kullanıcı bulunamadı (userId yok): ${discordId}`);
+          return null;
+        }
+
+        const mutualCount = Number(data.mutualCount ?? data.mutual_count ?? rawGuilds.length) || 0;
+
+        console.log(`[Cyr0nix] ✅ ${mutualCount} ortak sunucu (${Date.now() - startTime}ms)`);
+
+        return {
+          userId: userIdNorm,
+          username: username || globalName,
+          global_name: globalName,
+          discriminator,
+          accent_color: accentColor,
+          avatar,
+          banner,
+          mutualCount,
+          mutualGuilds: (Array.isArray(rawGuilds) ? rawGuilds : []).map((g) => {
+            const gid = String(g?.id ?? g?.guild_id ?? g?.GuildId ?? g?.server_id ?? '').trim();
+            const staff = inferDiscordGuildStaffFromCyr0nix(g);
+            return {
+              guild_id: gid,
+              name: g?.name ?? g?.Name ?? g?.guild_name,
+              icon: g?.icon ?? g?.Icon ?? g?.icon_hash,
+              banner: g?.banner ?? g?.Banner ?? g?.banner_hash,
+              member_avatar: g?.memberAvatar ?? g?.member_avatar,
+              member_nickname: g?.memberNickname ?? g?.member_nickname ?? g?.nick ?? g?.nickname ?? g?.Nickname,
+              roles: g?.roles || [],
+              owner: staff.owner,
+              admin: staff.admin,
+              moderator: staff.moderator,
+              booster: staff.booster,
+              permissions: staff.permissions,
+              source: 'cyr0nix'
+            };
+          }).filter((g) => g.guild_id && /^\d{5,30}$/.test(String(g.guild_id))),
+          fetched_at: new Date().toISOString(),
+          api_status: 'success'
+        };
+        
+      } catch (error) {
+        const status = error.response?.status;
+        if (status === 404) {
+          console.log(`[Cyr0nix] HTTP 404: ${endpoint} — sonraki uç veya kimlik başlığı deneniyor`);
+          break;
+        }
+        const retryable = !status || [403, 429, 502, 503, 504].includes(status);
+        if (i < retries && retryable) {
+          const waitMs = Math.min(12000, 1800 * (2 ** i) + Math.floor(Math.random() * 400));
+          console.log(`[Cyr0nix] ⏳ Retry ${i + 1}/${retries} (${status || error.message}) ${waitMs}ms`);
+          await new Promise((r) => setTimeout(r, waitMs));
+          continue;
+        }
+        console.log(`[Cyr0nix] ❌ ${endpoint} başarısız: ${status || error.message}`);
+        break; // sonraki auth veya endpoint
+      }
+    }
+    }
+  }
+
+  console.log('[Cyr0nix] ❌ Tüm endpointler / kimlik başlıkları başarısız (üst servis 502 veya uç nokta değişmiş olabilir)');
+  return { api_status: 'error', error: 'all_endpoints_failed' };
 }
 
 // Cyr0nix verilerini cache'e kaydet
@@ -3951,54 +4146,95 @@ async function getCachedCyr0nixMutuals(discordId) {
   }
 }
 
-// Discord Widget API - Token gerekmez
-async function fetchDiscordWidgetInfo(guildId) {
-  try {
-    const response = await axios.get(`https://discord.com/api/guilds/${guildId}/widget.json`, {
-      timeout: 5000,
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'ZagrosOSINT/1.0'
+// Discord Widget API - Token gerekmez (RETRY mekanizmalı)
+async function fetchDiscordWidgetInfo(guildId, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const response = await axios.get(`https://discord.com/api/guilds/${guildId}/widget.json`, {
+        timeout: 3000 + (i * 2000), // Her retry'da timeout artır
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'ZagrosOSINT/1.0 (Discord Widget Bot)',
+          'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8'
+        }
+      });
+      
+      const data = response.data;
+      if (data && data.id) {
+        console.log(`[Widget] ✅ ${guildId} - ${data.name} (${data.members?.length || 0} üye)`);
+        return {
+          id: data.id,
+          name: data.name,
+          instant_invite: data.instant_invite,
+          presence_count: data.presence_count || 0,
+          members: data.members || [],
+          channels: data.channels || [],
+          source: 'discord_widget',
+          widget_enabled: true
+        };
       }
-    });
-    
-    const data = response.data;
-    if (data && data.id) {
-      return {
-        id: data.id,
-        name: data.name,
-        instant_invite: data.instant_invite,
-        presence_count: data.presence_count || 0,
-        members: data.members || [],
-        channels: data.channels || [],
-        source: 'discord_widget'
-      };
+      return null;
+    } catch (error) {
+      const status = error.response?.status;
+      if (status === 403) {
+        console.log(`[Widget] 🔒 ${guildId} - Widget devre dışı (403)`);
+        return { widget_enabled: false, error: 'disabled' }; // Widget devre dışı
+      }
+      if (i < retries) {
+        console.log(`[Widget] ⏳ ${guildId} - Retry ${i + 1}/${retries} (${status || error.message})`);
+        await new Promise(r => setTimeout(r, 500 * (i + 1))); // Exponential backoff
+        continue;
+      }
+      console.log(`[Widget] ❌ ${guildId} - Tüm retry'ler başarısız (${status || error.message})`);
+      return null;
     }
-    return null;
-  } catch (error) {
-    // Widget disabled veya hata
-    return null;
   }
+  return null;
 }
 
 // 🔍 Discord Widget API ile Sunucu ve Üyeleri Çek (Token gerektirmez)
 async function enrichGuildFromWidget(guildId) {
   try {
     const widgetData = await fetchDiscordWidgetInfo(guildId);
-    if (!widgetData) return null;
+    if (!widgetData || widgetData.error) return widgetData; // Widget devre dışı ise bilgiyi döndür
     
-    // Üye avatarlarını ve bilgilerini formatla
-    const formattedMembers = (widgetData.members || []).map(member => ({
-      id: member.id,
-      username: member.username,
-      discriminator: member.discriminator || '0',
-      avatar: member.avatar_url,
-      status: member.status,
-      game: member.game?.name || null,
-      bot: member.bot || false,
-      channel_id: member.channel_id || null,
-      suppress: member.suppress || false
-    }));
+    // 🆕 Üye avatarlarını ve bilgilerini DETAYLI formatla
+    const formattedMembers = (widgetData.members || []).map(member => {
+      // Avatar URL oluştur
+      let avatar_url = null;
+      if (member.avatar_url) {
+        avatar_url = member.avatar_url;
+      } else if (member.id && member.avatar) {
+        const ext = member.avatar.startsWith('a_') ? 'gif' : 'png';
+        avatar_url = `https://cdn.discordapp.com/avatars/${member.id}/${member.avatar}.${ext}?size=128`;
+      }
+      
+      // Status emoji
+      const statusEmoji = {
+        'online': '🟢',
+        'idle': '🟡',
+        'dnd': '🔴',
+        'offline': '⚫'
+      }[member.status] || '⚪';
+      
+      return {
+        id: member.id,
+        username: member.username,
+        discriminator: member.discriminator,
+        avatar_url: avatar_url,
+        avatar: member.avatar,
+        status: member.status,
+        status_emoji: statusEmoji,
+        game: member.game?.name || null,
+        bot: member.bot || false,
+        nick: member.nick || member.username,
+        display_name: member.nick || member.username,
+        channel_id: member.channel_id,
+        deaf: member.deaf || false,
+        mute: member.mute || false,
+        suppress: member.suppress || false
+      };
+    });
     
     return {
       guild_id: widgetData.id,
@@ -4478,6 +4714,44 @@ async function searchTxtByDiscordId(discordId) {
   }];
 }
 
+/** Büyük TXT (JSON index atlanmış) için satır akışında discord_id ara — max satır sınırı */
+async function searchTxtStreamForDiscordId(discordId, maxLines = 320000) {
+  if (!TXT_PATH || !fs.existsSync(TXT_PATH)) return [];
+  const needle = String(discordId);
+  const out = [];
+  try {
+    const st = await fs.promises.stat(TXT_PATH);
+    if (st.size > 200 * 1024 * 1024) {
+      console.log('[TXT stream] Dosya çok büyük, akış tarama atlandı');
+      return [];
+    }
+    const rs = fs.createReadStream(TXT_PATH, { encoding: 'utf8' });
+    const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
+    let n = 0;
+    for await (const line of rl) {
+      n++;
+      if (n > maxLines) break;
+      if (!line.includes(needle)) continue;
+      const emailM = line.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+      const ipM = line.match(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/);
+      out.push({
+        source: path.basename(TXT_PATH),
+        discord_id: needle,
+        username: null,
+        email: emailM ? emailM[0] : null,
+        ip: ipM ? ipM[0] : null,
+        stream_scan: true
+      });
+      if (out.length >= 8) break;
+    }
+    rl.close();
+    rs.close();
+  } catch (e) {
+    console.log('[TXT stream]', e.message);
+  }
+  return out;
+}
+
 async function scanSqlFileForIp(sqlPath, ipNeedle, excludeDiscordId, maxHits = 25, maxLines = 250_000) {
   if (!ipNeedle) return [];
   if (!fs.existsSync(sqlPath)) return [];
@@ -4599,7 +4873,7 @@ function parseConnObj(obj) {
   });
 }
 
-async function scanSqlFileForDiscordId(sqlPath, discordId, maxHits = 50) {
+async function scanSqlFileForDiscordId(sqlPath, discordId, maxHits = 50, maxLines = 200000) {
   if (!fs.existsSync(sqlPath)) return [];
   console.log(`[Tarama] Başlıyor: ${path.basename(sqlPath)}`);
 
@@ -4609,8 +4883,11 @@ async function scanSqlFileForDiscordId(sqlPath, discordId, maxHits = 50) {
     const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
 
     const needle = String(discordId);
+    let linesRead = 0;
 
     for await (const line of rl) {
+      linesRead++;
+      if (linesRead > maxLines) break;
       if (!line.includes(needle)) continue;
 
       let email = null, ip = null, username = null, discriminator = null;
@@ -4808,6 +5085,67 @@ app.use((req, res, next) => {
   next();
 });
 
+/** Cyr0nix / Discord üye nesnesinden sunucudaki yetki rozetleri */
+function inferDiscordGuildStaffFromCyr0nix(g) {
+  if (!g || typeof g !== 'object') {
+    return { owner: false, admin: false, moderator: false, booster: false, permissions: null };
+  }
+  const owner = !!(g.owner ?? g.isOwner ?? g.is_owner ?? g.Owner ?? g.guild_owner);
+  let perms = 0n;
+  try {
+    const pr = g.permissions ?? g.permission ?? g.Permissions ?? g.memberPermissions ?? g.member_permissions ?? 0;
+    perms = BigInt(String(typeof pr === 'number' ? pr : (pr || 0)));
+  } catch {
+    perms = 0n;
+  }
+  const ADMIN = 0x8n;
+  const MANAGE_GUILD = 0x20n;
+  const KICK = 0x2n;
+  const BAN = 0x4n;
+  const MANAGE_ROLES = 0x10000000n;
+  const MANAGE_MESSAGES = 0x2000n;
+  const hasAdminPerm = (perms & ADMIN) === ADMIN || (perms & MANAGE_GUILD) === MANAGE_GUILD;
+  const admin = !owner && hasAdminPerm;
+  const moderator = !owner && !admin && ((perms & (KICK | BAN | MANAGE_ROLES | MANAGE_MESSAGES)) !== 0n);
+  const booster = !!(g.premium_since ?? g.premiumSince ?? g.booster ?? g.Booster ?? g.is_booster);
+  const permissions = perms > 0n ? String(perms) : null;
+  return { owner, admin, moderator, booster, permissions };
+}
+
+/** FindCord + Cyr0nix mutual guilds tek listede; kartta kaynak sütunu için source_tag */
+function mergeDiscordGuildListsForSearch(fcGuilds, cnxGuilds) {
+  const map = new Map();
+  const normId = (g) => {
+    if (!g) return '';
+    const id = g.id ?? g.guild_id ?? g.GuildId ?? g.GuildID ?? g.server_id;
+    return id != null && id !== '' ? String(id).trim() : '';
+  };
+  for (const g of fcGuilds || []) {
+    const id = normId(g);
+    if (!id) continue;
+    map.set(id, { ...g, id, guild_id: id, source_tag: 'findcord' });
+  }
+  for (const g of cnxGuilds || []) {
+    const id = normId(g);
+    if (!id) continue;
+    const ex = map.get(id);
+    if (ex) {
+      ex.source_tag = 'both';
+      if (!ex.member_nickname && g.member_nickname) ex.member_nickname = g.member_nickname;
+      if (!ex.icon && g.icon) ex.icon = g.icon;
+      ex.owner = !!(ex.owner || g.owner);
+      ex.admin = !!(ex.admin || g.admin);
+      ex.moderator = !!(ex.moderator || g.moderator);
+      ex.booster = !!(ex.booster || g.booster);
+      const exName = String(ex.name || '');
+      if (/^Sunucu #/i.test(exName) && g.name && !/^Sunucu #/i.test(String(g.name))) ex.name = g.name;
+    } else {
+      map.set(id, { ...g, id, guild_id: id, source_tag: 'cyr0nix' });
+    }
+  }
+  return [...map.values()];
+}
+
 // Consolidated search across DB, TXT and SQL data sources
 app.get('/api/search-all', async (req, res) => {
   const discordId = String(req.query?.discord_id ?? '').trim();
@@ -4815,57 +5153,214 @@ app.get('/api/search-all', async (req, res) => {
     return res.status(400).json({ ok: false, error: 'invalid_discord_id' });
   }
   await ensureSqlLoaded();
-  
-  // 1. FindCord API'den veri çek
+
+  // İlk istekte GDrive indirmesi bitmeden SQL yolu/dosya boş olabiliyor — kısa yenileme (tek seferde genelde 0ms)
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const hasSqlData = Array.isArray(SQL_PATHS) && SQL_PATHS.some((p) => {
+      try {
+        return fs.existsSync(p) && fs.statSync(p).size > 4096;
+      } catch {
+        return false;
+      }
+    });
+    if (hasSqlData) break;
+    await new Promise((r) => setTimeout(r, 350));
+    try {
+      detectDataSources();
+    } catch { /* ignore */ }
+  }
+
+  // 1. FindCord + Cyr0nix paralel (HTTP gecikmesi birikmez)
   let fcRaw = null;
   let fcData = null;
+  let cyr0nixData = null;
   try {
-    fcRaw = await getFindCordData(discordId);
-    if (fcRaw) {
-      fcData = normalizeFindCordData(discordId, fcRaw);
-      console.log(`[FindCord] Veri alındı: ${discordId}`);
+    const [fcPair, cnx] = await Promise.all([
+      (async () => {
+        try {
+          const raw = await getFindCordData(discordId);
+          const norm = raw ? normalizeFindCordData(discordId, raw) : null;
+          if (norm) console.log(`[FindCord] Veri alındı: ${discordId}`);
+          return { raw, norm };
+        } catch (e) {
+          console.log(`[FindCord] Hata: ${e.message}`);
+          return { raw: null, norm: null };
+        }
+      })(),
+      fetchCyr0nixMutuals(discordId, 4)
+    ]);
+    fcRaw = fcPair.raw;
+    fcData = fcPair.norm;
+    cyr0nixData = cnx;
+    if (cyr0nixData?.api_status === 'success') {
+      console.log(`[search-all] Cyr0nix: ${cyr0nixData.username || discordId} (${cyr0nixData.mutualCount || 0} sunucu)`);
+    } else if (cyr0nixData?.api_status) {
+      console.log(`[search-all] Cyr0nix: ${cyr0nixData.api_status} (${discordId})`);
     }
   } catch (err) {
-    console.log(`[FindCord] Hata: ${err.message}`);
+    console.log(`[search-all] Paralel kaynak hata: ${err.message}`);
   }
+  const cyr0nixOk = !!(cyr0nixData && cyr0nixData.api_status === 'success');
+
+  const mapCyr0nixGuildsForCard = () => {
+    const list = cyr0nixData?.mutualGuilds || [];
+    return list.map((g) => {
+      const gid = String(g.guild_id ?? g.id ?? g.GuildId ?? g.server_id ?? '').trim();
+      if (!gid || !/^\d{5,30}$/.test(gid)) return null;
+      let iconVal = g.icon;
+      if (iconVal && !String(iconVal).startsWith('http') && gid) {
+        const ext = String(iconVal).startsWith('a_') ? 'gif' : 'png';
+        iconVal = `https://cdn.discordapp.com/icons/${gid}/${iconVal}.${ext}?size=128`;
+      }
+      const staff = inferDiscordGuildStaffFromCyr0nix(g);
+      return {
+        id: gid,
+        guild_id: gid,
+        name: g.name || `Sunucu #${String(gid).slice(-6)}`,
+        icon: iconVal || null,
+        member_nickname: g.member_nickname || null,
+        owner: !!(g.owner ?? staff.owner),
+        admin: !!(g.admin ?? staff.admin),
+        moderator: !!(g.moderator ?? staff.moderator),
+        booster: !!(g.booster ?? staff.booster),
+        permissions: g.permissions ?? staff.permissions
+      };
+    }).filter(Boolean);
+  };
   
-  // 2. SQL dosyalarından veri çek
+  // 2. SQL dosyalarından veri çek (dosya başına satır sınırı — GB dosyalarda zaman aşımı önlenir)
   let sqlMatches = [];
   try {
-    const lists = await Promise.all(SQL_PATHS.map(p => scanSqlFileForDiscordId(p, discordId)));
+    const perFileMaxHits = 24;
+    const perFileMaxLines = 52000;
+    const lists = await Promise.all(
+      SQL_PATHS.map(p => scanSqlFileForDiscordId(p, discordId, perFileMaxHits, perFileMaxLines))
+    );
     sqlMatches = lists.flat();
     console.log(`[SQL] ${sqlMatches.length} sonuç bulundu: ${discordId}`);
   } catch (err) {
     console.log(`[SQL] Hata: ${err.message}`);
   }
+
+  // 2b. PostgreSQL (ID güvenli — bigint sorgu)
+  let dbRows = [];
+  if (isDBReady()) {
+    try {
+      dbRows = await dbSearchByDiscordId(discordId);
+      if (dbRows.length) console.log(`[search-all] DB: ${dbRows.length} kayıt`);
+    } catch (e) {
+      console.log(`[search-all] DB hata: ${e.message}`);
+    }
+  }
+  const dbRow = dbRows[0] || null;
   
   // 3. TXT dosyasından veri çek
   let txtMatches = [];
   try {
     txtMatches = await searchTxtByDiscordId(discordId);
   } catch { /* ignore */ }
+  if (!txtMatches.length) {
+    try {
+      const streamed = await searchTxtStreamForDiscordId(discordId);
+      if (streamed.length) {
+        txtMatches = streamed;
+        console.log(`[TXT] Akış taraması: ${streamed.length} eşleşme`);
+      }
+    } catch (e) {
+      console.log(`[TXT] Akış: ${e.message}`);
+    }
+  }
   
   // 4. Tüm verileri birleştir
-  // Önce SQL verilerinden ilk kaydı al
-  const sqlData = sqlMatches[0] || {};
-  console.log(`[SQL] Birleştirme: ${sqlMatches.length} sonuç, ilk kayıt:`, JSON.stringify(sqlData).slice(0, 200));
+  const sql0 = sqlMatches[0] || {};
+  const txt0 = txtMatches[0] || {};
+
+  const mergeLeakEmailRows = () => {
+    const byEmail = new Map();
+    const add = (email, source) => {
+      const e = email != null ? String(email).trim() : '';
+      if (!e || !e.includes('@')) return;
+      const src = source || 'Kayıt';
+      if (!byEmail.has(e)) byEmail.set(e, src);
+    };
+    for (const m of sqlMatches) if (m?.email) add(m.email, m.source ? String(m.source) : 'SQL');
+    if (dbRow?.email) add(dbRow.email, 'PostgreSQL');
+    for (const t of txtMatches) if (t?.email) add(t.email, t.source ? String(t.source).split(/[/\\]/).pop() : 'TXT');
+    return [...byEmail.entries()].map(([email, source]) => ({ email, source }));
+  };
+  const mergeLeakIpRows = () => {
+    const ipRe = /^(?:\d{1,3}\.){3}\d{1,3}$|^[0-9a-f:]+$/i;
+    const byIp = new Map();
+    const add = (ip, source) => {
+      const s = ip != null ? String(ip).trim() : '';
+      if (!s || s.length < 7 || !ipRe.test(s)) return;
+      const src = source || 'Kayıt';
+      if (!byIp.has(s)) byIp.set(s, src);
+    };
+    for (const m of sqlMatches) if (m?.ip) add(m.ip, m.source ? String(m.source) : 'SQL');
+    if (dbRow?.ip) add(dbRow.ip, 'PostgreSQL');
+    for (const t of txtMatches) if (t?.ip) add(t.ip, t.source ? String(t.source).split(/[/\\]/).pop() : 'TXT');
+    return [...byIp.entries()].map(([ip, source]) => ({ ip, source }));
+  };
+  const leakEmailRows = mergeLeakEmailRows();
+  const leakIpRows = mergeLeakIpRows();
+
+  const sqlData = {
+    ...sql0,
+    username: sql0.username || dbRow?.username || txt0.username || null,
+    email: sql0.email || dbRow?.email || txt0.email || leakEmailRows[0]?.email || null,
+    ip: sql0.ip || dbRow?.ip || txt0.ip || leakIpRows[0]?.ip || null,
+    avatar_hash: sql0.avatar_hash || dbRow?.avatar_hash || null,
+    bio: sql0.bio || null,
+    source: sql0.source || (dbRow ? 'database' : null) || txt0.source || null
+  };
+  console.log(`[SQL] Birleştirme: sql=${sqlMatches.length} db=${dbRows.length} txt=${txtMatches.length}`, JSON.stringify(sqlData).slice(0, 200));
   
+  const cyr0nixAvatarUrl = cyr0nixOk && cyr0nixData.avatar
+    ? discordAvatarUrl(discordId, cyr0nixData.avatar, 256)
+    : null;
+  const cyr0nixBannerUrl = cyr0nixOk && cyr0nixData.banner
+    ? (() => {
+        const bh = cyr0nixData.banner;
+        const ext = String(bh).startsWith('a_') ? 'gif' : 'png';
+        return `https://cdn.discordapp.com/banners/${discordId}/${bh}.${ext}?size=512`;
+      })()
+    : null;
+  const cyr0nixGuildRows = cyr0nixOk ? mapCyr0nixGuildsForCard() : [];
+
+  const emailLocalHint = (em) => {
+    if (!em || typeof em !== 'string' || !em.includes('@')) return null;
+    const local = em.split('@')[0].trim();
+    if (!local || local.length > 72) return null;
+    if (!/^[a-zA-Z0-9._-]+$/.test(local)) return null;
+    return local;
+  };
+  const usernameFromLeak = sqlData?.username || emailLocalHint(sqlData?.email) || emailLocalHint(txt0?.email) || emailLocalHint(dbRow?.email);
+
   // Birleştirilmiş kullanıcı objesi oluştur
   const mergedUser = {
     discord_id: discordId,
-    // FindCord verileri (öncelikli) - normalizeFindCordData'dan gelen zenginleştirilmiş veriler
-    username: fcData?.username || sqlData?.username || null,
-    global_name: fcData?.global_name || null,
-    avatar_url: fcData?.avatar_url || null,
-    banner_url: fcData?.banner_url || null,
+    // FindCord + Cyr0nix + SQL — Cyr0nix FindCord yokken kullanıcı adı/pp için
+    username: fcData?.username || (cyr0nixOk ? cyr0nixData.username : null) || usernameFromLeak || null,
+    global_name: fcData?.global_name || (cyr0nixOk ? (cyr0nixData.global_name || null) : null) || null,
+    cyr0nix_display_name: cyr0nixOk ? (cyr0nixData.global_name || cyr0nixData.username || null) : null,
+    cyr0nix_discriminator: cyr0nixOk && cyr0nixData.discriminator ? String(cyr0nixData.discriminator) : null,
+    accent_color: cyr0nixOk && cyr0nixData.accent_color != null ? cyr0nixData.accent_color : null,
+    avatar_url: fcData?.avatar_url || cyr0nixAvatarUrl || null,
+    avatar_hash: fcData?.avatar_hash || (cyr0nixOk ? cyr0nixData.avatar : null) || sqlData?.avatar_hash || null,
+    banner_url: fcData?.banner_url || cyr0nixBannerUrl || null,
     bio: fcData?.bio || sqlData?.bio || null,
     pronouns: fcData?.pronouns || null,
     badges: fcData?.badges || [],
     presence: fcData?.presence || null,
-    // Sunucular - normalizeFindCordData'dan gelen zenginleştirilmiş guild verileri
-    guilds: fcData?.guilds || [],
-    // FindCord ekstra verileri - yeni normalize edilmiş alanlar
+    // Sunucular — FindCord + Cyr0nix birleşik (kartta kaynak etiketi)
+    guilds: mergeDiscordGuildListsForSearch(fcData?.guilds || [], cyr0nixGuildRows),
     findcord_servers: fcData?.guilds || [],
+    mutual_guilds: cyr0nixGuildRows,
+    findcord_top_friends: fcData?.top_friends || [],
+    cyr0nix_enriched: !!cyr0nixOk,
+    cyr0nix_mutual_count: cyr0nixOk ? (cyr0nixData.mutualCount || 0) : 0,
+    cyr0nix_fetched_at: cyr0nixOk ? cyr0nixData.fetched_at : null,
     findcord_voice_friends: fcData?.voice_friends || [],
     findcord_recent_messages: fcData?.recent_messages || [],
     findcord_display_names: fcData?.display_names || [],
@@ -4886,24 +5381,42 @@ app.get('/api/search-all', async (req, res) => {
     ip: sqlData?.ip || null,
     ip_masked: sqlData?.ip_masked || null,
     connections_apps: sqlData?.connections_apps || [],
+    leak_email_rows: leakEmailRows,
+    leak_ip_rows: leakIpRows,
     // Meta
     findcord_enriched: !!fcData,
+    cyr0nix_api_status: cyr0nixData?.api_status || null,
     sql_matches_count: sqlMatches.length,
-    sources: sqlMatches.map(m => m.source).filter((v, i, a) => a.indexOf(v) === i)
+    sources: [
+      ...sqlMatches.map(m => m.source).filter(Boolean),
+      ...(dbRow ? ['database'] : []),
+      ...(cyr0nixOk ? ['cyr0nix'] : []),
+      ...(txtMatches.length && TXT_PATH ? [path.basename(TXT_PATH)] : [])
+    ].filter((v, i, a) => a.indexOf(v) === i)
   };
   
-  // Eğer hiç veri yoksa not_found döndür
-  if (!fcData && sqlMatches.length === 0 && txtMatches.length === 0) {
-    return res.json({ ok: true, found: false, discord_id: discordId, message: 'Veri bulunamadı' });
+  // Cyr0nix / FindCord / SQL / TXT / PostgreSQL — en az biri doluysa bulundu say
+  if (!fcData && !cyr0nixOk && sqlMatches.length === 0 && txtMatches.length === 0 && !dbRow) {
+    return res.json({
+      ok: true,
+      found: false,
+      discord_id: discordId,
+      message: 'Veri bulunamadı',
+      cyr0nix_api_status: cyr0nixData?.api_status || null
+    });
   }
   
-  res.json({ 
-    ok: true, 
+  res.json({
+    ok: true,
     found: true,
     discord_id: discordId,
     user: {
       ...mergedUser,
-      findcord_raw: fcRaw
+      findcord_raw: fcRaw,
+      sql_matches: sqlMatches,
+      txt_matches: txtMatches,
+      total_sql_matches: sqlMatches.length,
+      total_txt_matches: txtMatches.length
     },
     sql_matches: sqlMatches,
     txt_matches: txtMatches,
@@ -5557,30 +6070,400 @@ app.get('/api/admin/guilds', requireAdmin, async (req, res) => {
     }
   }
 
-  // 3. 🆕 SQL DOSYALARINDAN GUILD ÇIKAR
+  // 3. 🆕 SQL DOSYALARINDAN GUILD ve ÜYE ÇIKAR - EMAIL ve IP ile birlikte
   try {
+    console.log('[AdminGuilds] SQL dosyalarından guild verileri çıkarılıyor...');
+    
+    const guildsMap = new Map();
+    const memberInfoMap = new Map(); // discord_id -> {username, avatar, email, ip}
+    const MAX_FILE_SCAN_LINES = 300000; // Her dosyadan max 300k satır
+    const MAX_TOTAL_TIME = 20000; // Toplam 20 saniye max
+    const sqlStartTime = Date.now();
+
+    for (const sqlPath of SQL_PATHS.slice(0, 10)) { // İlk 10 dosya
+      if (!fs.existsSync(sqlPath)) continue;
+      if (Date.now() - sqlStartTime > MAX_TOTAL_TIME) {
+        console.log('[AdminGuilds] Zaman limiti aşıldı');
+        break;
+      }
+      
+      try {
+        const rs = fs.createReadStream(sqlPath, { encoding: 'utf8' });
+        const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
+        let lineCount = 0;
+
+        for await (const line of rl) {
+          lineCount++;
+          if (lineCount > MAX_FILE_SCAN_LINES) break;
+          if (Date.now() - sqlStartTime > MAX_TOTAL_TIME) break;
+          if (line.length > 15000) continue;
+
+          // Discord ID ara (17-20 digit)
+          const discordIdMatches = [...line.matchAll(/\b(\d{17,20})\b/g)].map(m => m[1]);
+          if (!discordIdMatches.length) continue;
+          
+          // İlk Discord ID'yi kullan (user_id veya discord_id)
+          const userId = discordIdMatches[0];
+          if (userId.startsWith('7656119')) continue; // Steam ID'leri atla
+
+          // JSON formatında username, avatar, email ara
+          let username = null;
+          let avatar = null;
+          let email = null;
+          
+          // Username pattern
+          const usernameMatch = line.match(/"username"\s*:\s*"([^"]+)"/);
+          if (usernameMatch) username = usernameMatch[1];
+          
+          // Avatar pattern
+          const avatarMatch = line.match(/"avatar"\s*:\s*"([^"]+)"/);
+          if (avatarMatch) avatar = avatarMatch[1];
+          
+          // Email pattern - çeşitli formatlar
+          const emailMatch = line.match(/[\s:,\[\]]([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})[\s:,\]\}]/);
+          if (emailMatch) email = emailMatch[1];
+          
+          // IP address pattern
+          let ip = null;
+          const ipMatch = line.match(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/);
+          if (ipMatch) {
+            const ipStr = ipMatch[1];
+            // Geçerli IP kontrolü
+            const parts = ipStr.split('.').map(Number);
+            if (parts.every(p => p >= 0 && p <= 255)) {
+              ip = ipStr;
+            }
+          }
+
+          // Mevcut üye bilgilerini güncelle veya yeni ekle
+          if (!memberInfoMap.has(userId)) {
+            memberInfoMap.set(userId, { id: userId, username, avatar, email, ip });
+          } else {
+            const existing = memberInfoMap.get(userId);
+            if (username) existing.username = username;
+            if (avatar) existing.avatar = avatar;
+            if (email) existing.email = email;
+            if (ip) existing.ip = ip;
+          }
+
+          // Guild ID array'lerini bul
+          const allArrays = [...line.matchAll(/\[([^\]]{50,500})\]/g)].map(m => m[1]);
+          if (!allArrays.length) continue;
+
+          // En uzun array'i al (guild ID'leri içeren)
+          let bestIds = [];
+          for (const raw of allArrays) {
+            const ids = raw.split(',')
+              .map(s => s.trim().replace(/^['"]|['"]$/g, ''))
+              .filter(s => /^\d{17,20}$/.test(s) && !s.startsWith('7656119'));
+            if (ids.length > bestIds.length) bestIds = ids;
+          }
+          if (!bestIds.length) continue;
+
+          // Her guild ID için kayıt oluştur/güncelle
+          for (const gid of bestIds) {
+            const existing = guildsMap.get(gid);
+            if (existing) {
+              existing.member_count++;
+              if (existing.sample_member_ids.length < 200 && !existing.sample_member_ids.includes(userId)) {
+                existing.sample_member_ids.push(userId);
+              }
+            } else if (guildsMap.size < 1000) {
+              guildsMap.set(gid, {
+                guild_id: gid,
+                id: gid,
+                name: null,
+                icon: null,
+                banner: null,
+                member_count: 1,
+                source: 'sql_file',
+                sample_member_ids: [userId]
+              });
+            }
+          }
+        }
+        rl.close();
+      } catch (err) {
+        console.error(`[AdminGuilds] SQL Hata ${sqlPath}:`, err.message);
+      }
+    }
+
+    // TXT dosyalarından da email ve IP bilgisi çıkar
+    try {
+      const txtPath = path.join(process.cwd(), 'dcıdsorgudata.txt');
+      if (fs.existsSync(txtPath)) {
+        console.log('[AdminGuilds] TXT dosyasından email/IP çıkarılıyor...');
+        const txtContent = fs.readFileSync(txtPath, 'utf8');
+        const lines = txtContent.split('\n').slice(0, 50000); // İlk 50k satır
+        
+        for (const line of lines) {
+          // Discord ID ara
+          const idMatch = line.match(/(\d{17,20})/);
+          if (!idMatch) continue;
+          const userId = idMatch[1];
+          
+          // Email ara
+          const emailMatch = line.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+          const email = emailMatch ? emailMatch[1] : null;
+          
+          // IP ara
+          const ipMatch = line.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+          let ip = null;
+          if (ipMatch) {
+            const parts = ipMatch[1].split('.').map(Number);
+            if (parts.every(p => p >= 0 && p <= 255)) ip = ipMatch[1];
+          }
+          
+          if (memberInfoMap.has(userId)) {
+            const existing = memberInfoMap.get(userId);
+            if (email && !existing.email) existing.email = email;
+            if (ip && !existing.ip) existing.ip = ip;
+          }
+        }
+      }
+    } catch (txtErr) {
+      console.log('[AdminGuilds] TXT okuma hatası:', txtErr.message);
+    }
+
+    // Guild Map'ten allGuilds Map'e aktar
     let sqlGuildCount = 0;
-    for (const sqlPath of SQL_PATHS.slice(0, 3)) { // İlk 3 dosya
+    for (const [gid, g] of guildsMap) {
+      if (!allGuilds.has(gid)) {
+        // Üye bilgilerini oluştur - TÜM üyeleri ekle
+        const memberIds = g.sample_member_ids || [];
+        g.members = memberIds.slice(0, 100).map(id => {
+          const member = memberInfoMap.get(id) || { id };
+          
+          // Avatar URL oluştur
+          let avatarUrl = null;
+          if (member.avatar) {
+            avatarUrl = `https://cdn.discordapp.com/avatars/${id}/${member.avatar}.png?size=128`;
+          } else {
+            const defaultIndex = parseInt(id.slice(-1), 10) % 5;
+            avatarUrl = `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
+          }
+          
+          return {
+            discord_id: id,
+            username: member.username || `Üye #${id.slice(-4)}`,
+            avatar_url: avatarUrl,
+            avatar_hash: member.avatar || null,
+            email: member.email || null,
+            ip: member.ip || null,
+            source: 'sql_file'
+          };
+        });
+        
+        g.total_members_found = memberIds.length;
+        allGuilds.set(gid, g);
+        sqlGuildCount++;
+      }
+    }
+    
+    console.log(`[AdminGuilds] SQL'den ${sqlGuildCount} sunucu, ${memberInfoMap.size} üye eklendi`);
+    
+    // ESKİ KOD - Yedek olarak saklanıyor
+    /*
+    let sqlGuildCount = 0;
+    for (const sqlPath of SQL_PATHS.slice(0, 5)) { // İlk 5 dosya
       if (!fs.existsSync(sqlPath)) continue;
       
       try {
-        const content = fs.readFileSync(sqlPath, 'utf8');
+        // Parçalı oku (ilk 10MB) - performans için
+        const fd = fs.openSync(sqlPath, 'r');
+        const buffer = Buffer.alloc(10 * 1024 * 1024); // 10MB
+        const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
+        fs.closeSync(fd);
+        const content = buffer.toString('utf8', 0, bytesRead);
         
-        // Guild ID pattern'lerini bul (10-30 haneli sayılar)
-        const guildMatches = content.match(/['"](\d{10,30})['"]/g);
-        if (guildMatches) {
-          for (const match of guildMatches) {
-            const guildId = match.replace(/['"]/g, '');
-            if (!allGuilds.has(guildId) && /^\d{10,30}$/.test(guildId)) {
-              allGuilds.set(guildId, {
-                guild_id: guildId,
-                name: `Sunucu #${guildId.slice(-6)}`,
-                icon: null,
-                banner: null,
-                description: `SQL: ${path.basename(sqlPath)}`,
-                source: 'sql_file'
-              });
-              sqlGuildCount++;
+        // 🔥 GELİŞMİŞ: INSERT INTO guilds satırlarını parse et
+        // SQL VALUES içinde parantez, virgüllü string olabilir - satır satır parse et
+        const insertLines = content.split(/\r?\n/).filter(line => /^\s*INSERT\s+INTO/i.test(line));
+        
+        for (const line of insertLines) {
+          try {
+            // Tablo adını kontrol et
+            const tableMatch = line.match(/INSERT\s+INTO\s+[`"']?(\w+)[`"']?\s*\(/i);
+            if (!tableMatch) continue;
+            const tableName = tableMatch[1].toLowerCase();
+            
+            // Sadece guild/server tablolarını veya guild_id içeren tabloları al
+            const isGuildTable = /^(guilds?|servers?|guild_members?|members?|discord_guilds?)$/.test(tableName);
+            if (!isGuildTable) continue;
+            
+            // Kolonları parse et
+            const colsMatch = line.match(/\(([\w\s,`"']+?)\)\s*VALUES/i);
+            if (!colsMatch) continue;
+            const columns = colsMatch[1].split(',').map(c => c.trim().replace(/[`"']/g, ''));
+            
+            // VALUES kısmını bul - parantez içini akıllı parse et
+            const valuesStart = line.indexOf('VALUES');
+            if (valuesStart < 0) continue;
+            const valuesSection = line.substring(valuesStart + 6).trim();
+            
+            // Her VALUES grubu için (çoklu insert olabilir)
+            const valueGroups = valuesSection.match(/\((?:[^)(]|'[^']*')*\)/g);
+            if (!valueGroups) continue;
+            
+            for (const group of valueGroups) {
+              try {
+                const inner = group.slice(1, -1); // Parantezleri kaldır
+                // Akıllı CSV parse - tek tırnak içindeki virgülleri yoksay
+                const values = [];
+                let current = '';
+                let inQuote = false;
+                let quoteChar = '';
+                for (let i = 0; i < inner.length; i++) {
+                  const ch = inner[i];
+                  if (!inQuote && (ch === "'" || ch === '"')) {
+                    inQuote = true;
+                    quoteChar = ch;
+                  } else if (inQuote && ch === quoteChar && (i + 1 >= inner.length || inner[i + 1] !== quoteChar)) {
+                    inQuote = false;
+                  } else if (inQuote && ch === quoteChar && inner[i + 1] === quoteChar) {
+                    current += ch;
+                    i++; // Kaçış karakterini atla
+                  } else if (!inQuote && ch === ',') {
+                    values.push(current.trim());
+                    current = '';
+                  } else {
+                    current += ch;
+                  }
+                }
+                values.push(current.trim());
+                
+                // Değerleri temizle
+                const cleanValues = values.map(v => {
+                  v = v.trim();
+                  if ((v.startsWith("'") && v.endsWith("'")) || (v.startsWith('"') && v.endsWith('"'))) {
+                    return v.slice(1, -1).replace(/''/g, "'").replace(/""/g, '"');
+                  }
+                  if (v === 'NULL' || v === 'null' || v === '') return null;
+                  return v;
+                });
+                
+                // Kolon eşleştirme
+                const idIdx = columns.findIndex(c => c.toLowerCase() === 'id' || c.toLowerCase() === 'guild_id');
+                const nameIdx = columns.findIndex(c => c.toLowerCase() === 'name' || c.toLowerCase() === 'guild_name');
+                const iconIdx = columns.findIndex(c => c.toLowerCase() === 'icon' || c.toLowerCase() === 'icon_hash');
+                const bannerIdx = columns.findIndex(c => c.toLowerCase() === 'banner' || c.toLowerCase() === 'banner_hash');
+                const descIdx = columns.findIndex(c => c.toLowerCase() === 'description' || c.toLowerCase() === 'desc');
+                const memberCountIdx = columns.findIndex(c => c.toLowerCase() === 'member_count' || c.toLowerCase() === 'member_count_range');
+                
+                const guildId = idIdx >= 0 ? cleanValues[idIdx] : null;
+                if (guildId && /^\d{10,30}$/.test(guildId) && !allGuilds.has(guildId)) {
+                  allGuilds.set(guildId, {
+                    guild_id: guildId,
+                    name: nameIdx >= 0 && cleanValues[nameIdx] ? cleanValues[nameIdx] : `Sunucu #${guildId.slice(-6)}`,
+                    icon: iconIdx >= 0 ? cleanValues[iconIdx] : null,
+                    banner: bannerIdx >= 0 ? cleanValues[bannerIdx] : null,
+                    description: descIdx >= 0 && cleanValues[descIdx] ? cleanValues[descIdx] : `SQL: ${path.basename(sqlPath)}`,
+                    member_count: memberCountIdx >= 0 ? parseInt(cleanValues[memberCountIdx]) || 0 : 0,
+                    source: 'sql_file'
+                  });
+                  sqlGuildCount++;
+                }
+              } catch (innerErr) {
+                // Tek değer grubu hatası diğerlerini etkilemesin
+              }
+            }
+          } catch (parseErr) {
+            // Tek satır hatası diğerlerini etkilemesin
+          }
+        }
+        
+        // 🆕 Ek olarak: guild_id kolonu olan diğer tabloları da tara (members vb.)
+        const memberIdRegex = /INSERT\s+INTO\s+[`"']?(\w+)[`"']?/gi;
+        const memberLines = content.split(/\r?\n/).filter(line => {
+          const m = line.match(memberIdRegex);
+          return m && /^(guild_members?|members?|discord_members?)$/i.test(m[1]);
+        });
+        
+        // Member tablolarından guild_id ve user bilgisi çıkar
+        for (const line of memberLines.slice(0, 200)) { // Max 200 satır
+          try {
+            const colsMatch = line.match(/\(([\w\s,`"']+?)\)\s*VALUES/i);
+            if (!colsMatch) continue;
+            const columns = colsMatch[1].split(',').map(c => c.trim().replace(/[`"']/g, ''));
+            
+            const guildIdIdx = columns.findIndex(c => c.toLowerCase().includes('guild_id') || c.toLowerCase() === 'server_id');
+            const userIdIdx = columns.findIndex(c => c.toLowerCase() === 'user_id' || c.toLowerCase() === 'discord_id' || c.toLowerCase() === 'id');
+            const nickIdx = columns.findIndex(c => c.toLowerCase() === 'nick' || c.toLowerCase() === 'nickname');
+            const avatarIdx = columns.findIndex(c => c.toLowerCase() === 'avatar' || c.toLowerCase() === 'avatar_hash');
+            
+            if (guildIdIdx < 0) continue; // guild_id yoksa atla
+            
+            const valuesStart = line.indexOf('VALUES');
+            if (valuesStart < 0) continue;
+            const valuesSection = line.substring(valuesStart + 6).trim();
+            const valueGroups = valuesSection.match(/\((?:[^)(]|'[^']*')*\)/g);
+            if (!valueGroups) continue;
+            
+            for (const group of valueGroups.slice(0, 50)) { // Max 50 üye
+              try {
+                const inner = group.slice(1, -1);
+                const vals = inner.split(',').map(v => {
+                  v = v.trim();
+                  if ((v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1).replace(/''/g, "'");
+                  if (v === 'NULL' || v === 'null' || v === '') return null;
+                  return v;
+                });
+                
+                const gId = vals[guildIdIdx];
+                const uId = userIdIdx >= 0 ? vals[userIdIdx] : null;
+                const nick = nickIdx >= 0 ? vals[nickIdx] : null;
+                const avatar = avatarIdx >= 0 ? vals[avatarIdx] : null;
+                
+                if (gId && /^\d{10,30}$/.test(gId)) {
+                  // Guild'i allGuilds'e ekle (yoksa)
+                  if (!allGuilds.has(gId)) {
+                    allGuilds.set(gId, {
+                      guild_id: gId,
+                      name: `Sunucu #${gId.slice(-6)}`,
+                      icon: null,
+                      banner: null,
+                      description: `SQL: ${path.basename(sqlPath)}`,
+                      source: 'sql_file',
+                      members: []
+                    });
+                    sqlGuildCount++;
+                  }
+                  
+                  // Üye ekle
+                  if (uId && /^\d{10,30}$/.test(uId)) {
+                    const guild = allGuilds.get(gId);
+                    if (guild && guild.members && guild.members.length < 30) {
+                      guild.members.push({
+                        discord_id: uId,
+                        username: nick || `Kullanıcı #${uId.slice(-4)}`,
+                        avatar_hash: avatar,
+                        source: 'sql_file'
+                      });
+                    }
+                  }
+                }
+              } catch (innerErr) {}
+            }
+          } catch (parseErr) {}
+        }
+        
+        // Eğer hala guild bulunamadıysa, basit ID taraması yap
+        if (sqlGuildCount === 0) {
+          const guildMatches = content.match(/['"](\d{10,30})['"]/g);
+          if (guildMatches) {
+            for (const m of guildMatches) {
+              const guildId = m.replace(/['"]/g, '');
+              if (!allGuilds.has(guildId) && /^\d{10,30}$/.test(guildId)) {
+                allGuilds.set(guildId, {
+                  guild_id: guildId,
+                  name: `Sunucu #${guildId.slice(-6)}`,
+                  icon: null,
+                  banner: null,
+                  description: `SQL: ${path.basename(sqlPath)}`,
+                  source: 'sql_file'
+                });
+                sqlGuildCount++;
+              }
             }
           }
         }
@@ -5588,7 +6471,8 @@ app.get('/api/admin/guilds', requireAdmin, async (req, res) => {
         console.warn(`[AdminGuilds] SQL okuma hatası ${sqlPath}:`, err.message);
       }
     }
-    console.log(`[AdminGuilds] SQL dosyalarından ${sqlGuildCount} guild çıkarıldı`);
+    console.log(`[AdminGuilds] SQL dosyalarından ${sqlGuildCount} detaylı guild çıkarıldı`);
+    */
   } catch (err) {
     console.warn('[AdminGuilds] SQL tarama hatası:', err.message);
   }
@@ -5665,49 +6549,61 @@ app.get('/api/admin/guilds', requireAdmin, async (req, res) => {
   let paginated = filtered.slice(offset, offset + limit);
 
   // 🎨 HER SUNUCU İÇİN GÖRSEL URL'LER OLUŞTUR ve DISCORD WIDGET'DAN ZENGİNLEŞTİR
-  const enrichedGuilds = [];
-  
-  for (const g of paginated) {
-    const guildWithVisuals = { ...g };
-    
-    // Eğer sunucu ismi generic ise (SQL'den gelen), Discord Widget API'den zenginleştirmeyi dene
-    const isGenericName = !guildWithVisuals.name || guildWithVisuals.name.startsWith('Sunucu #');
-    
-    if (isGenericName || !guildWithVisuals.icon || req.query.enrich === 'true') {
+  // Widget çağrılarını paralel yap (hız için)
+  const widgetPromises = paginated.map(async (g) => {
+    const isGenericName = !g.name || g.name.startsWith('Sunucu #');
+    if (isGenericName || !g.icon || req.query.enrich === 'true') {
       try {
-        // Discord Widget API'den sunucu bilgilerini çek (token gerektirmez)
         const widgetData = await enrichGuildFromWidget(g.guild_id);
-        
         if (widgetData && widgetData.name) {
-          // Widget'dan gelen gerçek ismi kullan
-          guildWithVisuals.name = widgetData.name;
-          guildWithVisuals.widget_enabled = true;
-          guildWithVisuals.instant_invite = widgetData.instant_invite;
-          guildWithVisuals.presence_count = widgetData.presence_count;
-          
-          // Üyeleri ekle (max 10 üye göster)
-          if (widgetData.members && widgetData.members.length > 0) {
-            guildWithVisuals.members = widgetData.members.slice(0, 10).map(m => ({
-              id: m.id,
-              username: m.username,
-              avatar: m.avatar,
-              status: m.status,
-              bot: m.bot
-            }));
-            guildWithVisuals.member_count = widgetData.members.length;
-          }
-          
-          // Kanalları ekle
-          if (widgetData.channels && widgetData.channels.length > 0) {
-            guildWithVisuals.channels = widgetData.channels.slice(0, 5);
-          }
-          
-          console.log(`[AdminGuilds] Widget'dan zenginleştirildi: ${g.guild_id} -> ${widgetData.name}`);
+          return { guild_id: g.guild_id, widgetData };
         }
-      } catch (widgetErr) {
-        // Widget hatası olsa da devam et
-        console.log(`[AdminGuilds] Widget zenginleştirme hatası ${g.guild_id}:`, widgetErr.message);
+      } catch (e) {
+        // Widget hatası yoksay
       }
+    }
+    return { guild_id: g.guild_id, widgetData: null };
+  });
+  
+  const widgetResults = await Promise.all(widgetPromises);
+  const widgetMap = new Map(widgetResults.map(r => [r.guild_id, r.widgetData]));
+  
+  const enrichedGuilds = paginated.map(g => {
+    const guildWithVisuals = generateDiscordCDNUrls({ ...g });
+    const widgetData = widgetMap.get(g.guild_id);
+    
+    // Widget'dan gelen verileri uygula
+    if (widgetData && widgetData.name) {
+      guildWithVisuals.name = widgetData.name;
+      guildWithVisuals.widget_enabled = true;
+      guildWithVisuals.instant_invite = widgetData.instant_invite;
+      guildWithVisuals.presence_count = widgetData.presence_count;
+      
+      // Üyeleri ekle (max 10 üye)
+      if (widgetData.members && widgetData.members.length > 0) {
+        const widgetMembers = widgetData.members.slice(0, 10).map(m => ({
+          id: m.id,
+          username: m.username,
+          avatar_url: m.avatar_url,
+          avatar: m.avatar,
+          status: m.status,
+          status_emoji: m.status_emoji,
+          bot: m.bot,
+          display_name: m.display_name || m.nick || m.username
+        }));
+        // SQL'den gelen üyelerle birleştir (tekrar yok)
+        const existingIds = new Set(widgetMembers.map(m => m.id));
+        const sqlMembers = (guildWithVisuals.members || []).filter(m => !existingIds.has(m.discord_id || m.user_id || m.id));
+        guildWithVisuals.members = [...widgetMembers, ...sqlMembers];
+        guildWithVisuals.member_count = widgetData.members.length;
+      }
+      
+      // Kanalları ekle
+      if (widgetData.channels && widgetData.channels.length > 0) {
+        guildWithVisuals.channels = widgetData.channels.slice(0, 5);
+      }
+      
+      console.log(`[AdminGuilds] Widget zenginleştirildi: ${g.guild_id} -> ${widgetData.name}`);
     }
     
     // Icon URL oluştur
@@ -5719,7 +6615,6 @@ app.get('/api/admin/guilds', requireAdmin, async (req, res) => {
         guildWithVisuals.icon_url = `https://cdn.discordapp.com/icons/${g.guild_id}/${guildWithVisuals.icon}.${ext}?size=256`;
       }
     } else {
-      // Varsayılan Discord guild icon (ID bazlı)
       const fallbackIndex = g.guild_id ? (Number(BigInt(g.guild_id) >> 22n) % 6) : 0;
       guildWithVisuals.icon_url = `https://cdn.discordapp.com/embed/avatars/${fallbackIndex}.png`;
     }
@@ -5739,8 +6634,8 @@ app.get('/api/admin/guilds', requireAdmin, async (req, res) => {
     guildWithVisuals.discord_url = `https://discord.com/invite/${g.guild_id}`;
     guildWithVisuals.widget_url = `https://discord.com/widget?id=${g.guild_id}&theme=dark`;
     
-    enrichedGuilds.push(guildWithVisuals);
-  }
+    return guildWithVisuals;
+  });
   
   paginated = enrichedGuilds;
 
@@ -5788,22 +6683,13 @@ app.post('/api/admin/guilds', requireAdmin, async (req, res) => {
   if (!/^[0-9]{10,30}$/.test(guildId)) {
     return res.status(400).json({ ok: false, error: 'Geçersiz sunucu ID' });
   }
-
-  const payload = {
-    name: normalizeGuildField(name, 120),
-    icon: normalizeGuildField(icon, 512),
-    banner: normalizeGuildField(banner, 512),
-    description: normalizeGuildField(description, 1024)
-  };
-
   try {
-    await persistGuildMetadata(guildId, payload);
-    if (!isDBReady() && payload.name) {
-      rememberGuildName(guildId, payload.name);
-    }
+    const payload = { name: name || null, icon: icon || null, banner: banner || null, description: description || null };
+    await dbUpsertGuildName(guildId, payload.name || '');
+    guildNamesCache.set(guildId, payload.name || '');
     guildsCache = null;
+    guildsCacheKey = '';
     guildsCacheTime = 0;
-
     return res.json({ ok: true, guild: { guild_id: guildId, ...payload } });
   } catch (err) {
     console.error('[AdminGuilds] Kaydetme hatası:', err);
@@ -5822,6 +6708,7 @@ app.delete('/api/admin/guilds/:guildId', requireAdmin, async (req, res) => {
     guildNamesCache.delete(guildId);
     guildCache.delete(guildId);
     guildsCache = null;
+    guildsCacheKey = '';
     guildsCacheTime = 0;
 
     return res.json({
@@ -6056,6 +6943,33 @@ app.get('/api/health', (req, res) => {
     tier: req.session?.tier || null,
     timestamp: Date.now()
   });
+});
+
+/** Giriş kartı vb.: Lanyard üzerinden Discord profili (aynı origin; tarayıcı engeli/CORS riski azalır) */
+app.get('/api/public/lanyard/:snowflake', async (req, res) => {
+  const id = String(req.params.snowflake || '').replace(/\D/g, '');
+  if (!/^\d{17,20}$/.test(id)) {
+    return res.status(400).json({ ok: false, error: 'invalid_snowflake' });
+  }
+  try {
+    const url = `https://api.lanyard.rest/v1/users/${id}`;
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 12000);
+    const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: ac.signal });
+    clearTimeout(t);
+    const text = await r.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      return res.status(502).json({ ok: false, error: 'bad_upstream' });
+    }
+    res.set('Cache-Control', 'public, max-age=120');
+    return res.status(r.ok ? 200 : r.status).json(body);
+  } catch (err) {
+    console.error('[Lanyard proxy]', err?.message || err);
+    return res.status(502).json({ ok: false, error: 'lanyard_unreachable' });
+  }
 });
 
 // 📥 GOOGLE DRIVE'DAN SQL DOSYALARINI İNDİR
@@ -7164,32 +8078,34 @@ app.get('/p/:discordId', async (req, res) => {
           location: dbData.location || dbData.city || dbData.country || null,
           nickname: dbData.nickname || dbData.member_nickname || null,
           avatar_hash: dbData.avatar || dbData.avatar_hash || null,
-          banner_hash: dbData.banner || dbData.banner_hash || null,
-          source_file: dbData.source || 'SQL Database',
-          found_at: dbData.created_at || dbData.found_at || null
+          banner_hash: dbData.banner || dbData.banner_hash || null
         };
         
-        // Eğer Cyr0nix'ten avatar/banner yoksa SQL'den kullan
-        if (!profileData.avatar.hash && profileData.sql_data.avatar_hash) {
-          const avatarHash = profileData.sql_data.avatar_hash;
+        // 🆕 SQL'den gelen verileri ana profileData'ya da aktar (Cyr0nix boşsa)
+        if (!profileData.username && dbData.username) {
+          profileData.username = dbData.username;
+        }
+        if (!profileData.avatar.hash && (dbData.avatar || dbData.avatar_hash)) {
+          const avatarHash = dbData.avatar || dbData.avatar_hash;
           profileData.avatar.hash = avatarHash;
           profileData.avatar.animated = avatarHash.startsWith('a_');
           profileData.avatar.url = discordAvatarUrl(discordId, avatarHash, 256);
           profileData.quick_links.avatar_128 = discordAvatarUrl(discordId, avatarHash, 128);
           profileData.quick_links.avatar_256 = discordAvatarUrl(discordId, avatarHash, 256);
           profileData.quick_links.avatar_512 = discordAvatarUrl(discordId, avatarHash, 512);
+          profileData.has_avatar = true;
         }
-        
-        if (!profileData.banner.hash && profileData.sql_data.banner_hash) {
-          const bannerHash = profileData.sql_data.banner_hash;
+        if (!profileData.banner.hash && (dbData.banner || dbData.banner_hash)) {
+          const bannerHash = dbData.banner || dbData.banner_hash;
           profileData.banner.hash = bannerHash;
           profileData.banner.animated = bannerHash.startsWith('a_');
           profileData.banner.url = `https://cdn.discordapp.com/banners/${discordId}/${bannerHash}.${bannerHash.startsWith('a_')?'gif':'png'}?size=512`;
           profileData.quick_links.banner_512 = `https://cdn.discordapp.com/banners/${discordId}/${bannerHash}.${bannerHash.startsWith('a_')?'gif':'png'}?size=512`;
           profileData.quick_links.banner_1024 = `https://cdn.discordapp.com/banners/${discordId}/${bannerHash}.${bannerHash.startsWith('a_')?'gif':'png'}?size=1024`;
+          profileData.has_banner = true;
         }
         
-        console.log(`[Profile] SQL verileri eklendi: ${discordId} - IP: ${profileData.sql_data.ip_address || 'Yok'}`);
+        console.log(`[Profile] SQL verisi entegre edildi: ${discordId} - username: ${dbData.username || 'yok'}, avatar: ${dbData.avatar_hash ? 'var' : 'yok'}`);
       }
     }
   } catch (err) {
@@ -8075,21 +8991,10 @@ app.get('/api/search-guild', requireSubscription, async (req, res) => {
     }
   }
 
-  // Yanıtı gönder
-  res.json({
-    ok: true,
-    guild_id: guildId,
-    guild: guildInfo,
-    count: members.length,
-    members: members.slice(0, 50), // Max 50 üye göster
-    search_duration_ms: duration,
-    timeout: searchTimeout,
-    enriched: true // 🚀 Detaylı bilgiler eklendi
-  });
-});
+  // Sunucu araması: IP geo + FindCord + Discord API (tek handler içinde — erken res.json kaldırıldı)
+  const processedIps = new Set();
+  const membersWithLocation = [];
 
-// 📧 EMAIL ARAMA ENDPOINT
-app.get('/api/search-email', requireSubscription, async (req, res) => {
   // Benzersiz IP'leri bul
   const uniqueIps = [...new Set(members.filter(m => m.ip).map(m => m.ip))];
   console.log(`[Guild Search] ${uniqueIps.length} benzersiz IP bulundu`);
@@ -8331,12 +9236,18 @@ app.get('/api/search-email', requireSubscription, async (req, res) => {
   // Cevap dön - TÜM veriler
   console.log(`[Guild Search] Tamamlandı: ${members.length} üye, ${Object.keys(locationSummary).length} farklı konum`);
 
+  const durationFinal = Date.now() - startTime;
   return res.json({
+    ok: true,
+    guild_id: guildId,
     query: guildId,
     type: 'guild',
     guild: guildInfo,
     count: members.length,
-    members: members,
+    members: members.slice(0, 50),
+    search_duration_ms: durationFinal,
+    timeout: searchTimeout,
+    enriched: true,
     has_locations: membersWithLocation.some(m => m.ip_location),
     location_count: Object.keys(locationSummary).length,
     location_summary: Object.values(locationSummary).sort((a, b) => b.count - a.count),
@@ -8512,6 +9423,7 @@ app.get('/api/status', async (req, res) => {
 app.post('/api/reload-sources', (req, res) => {
   const detected = detectDataSources();
   guildsCache = null;
+  guildsCacheKey = '';
   guildsCacheTime = 0;
   guildNamesCache = new Map(); // Cache'i tamamen temizle
   try {
@@ -8609,17 +9521,25 @@ app.get('/api/guilds/discover', async (req, res) => {
   }
 });
 
+const GUILDS_LIST_DEFAULT = 400;
+const GUILDS_LIST_MAX = 500;
+
 app.get('/api/guilds', requireSubscription, async (req, res) => {
   const query = String(req.query?.q || '').trim();
   const limitParam = Number(req.query?.limit);
   const offsetParam = Number(req.query?.offset);
-  const limit = Math.min(Math.max(Number.isFinite(limitParam) ? limitParam : 50, 1), 100); // Max 100
+  const noCache = req.query?.no_cache === '1' || req.query?.refresh === '1';
+  const limit = Math.min(
+    Math.max(Number.isFinite(limitParam) ? limitParam : GUILDS_LIST_DEFAULT, 1),
+    GUILDS_LIST_MAX
+  );
   const offset = Math.max(Number.isFinite(offsetParam) ? offsetParam : 0, 0);
-  const cacheable = !query && offset === 0;
+  const cacheKey = `${query}|${offset}|${limit}`;
+  const cacheable = !noCache;
   const now = Date.now();
 
-  if (cacheable && guildsCache && (now - guildsCacheTime) < CACHE_TTL) {
-    console.log('[Guilds] Cache kullanılıyor');
+  if (cacheable && guildsCache && guildsCacheKey === cacheKey && (now - guildsCacheTime) < CACHE_TTL) {
+    console.log('[Guilds] Cache kullaniliyor');
     return res.json({ ...guildsCache, cached: true });
   }
 
@@ -8637,9 +9557,9 @@ app.get('/api/guilds', requireSubscription, async (req, res) => {
     if (isDBReady()) {
       try {
         // Hızlı sorgu - uzun sürerse atla
-        const dbPromise = dbGetAllGuilds({ searchTerm: query, limit: Math.min(limit, 50), offset });
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('db_timeout')), 5000)
+        const dbPromise = dbGetAllGuilds({ searchTerm: query, limit, offset });
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('db_timeout')), 12000)
         );
         
         const dbResult = await Promise.race([dbPromise, timeoutPromise]);
@@ -8822,6 +9742,39 @@ app.get('/api/guilds', requireSubscription, async (req, res) => {
       }
     }
 
+    // 🎯 DISCORD WIDGET API ile ilk 5 sunucuyu zenginleştir
+    const widgetEnrichCount = Math.min(guilds.length, 5);
+    const widgetPromises = guilds.slice(0, widgetEnrichCount).map(async g => {
+      try {
+        const widgetData = await fetchDiscordWidget(g.id);
+        if (widgetData && widgetData.name) {
+          g.name = widgetData.name;
+          g.widget_enabled = true;
+          g.widget_data = {
+            instant_invite: widgetData.instant_invite,
+            presence_count: widgetData.presence_count,
+            member_count: widgetData.member_count
+          };
+          // Widget'dan üye bilgilerini ekle
+          if (widgetData.members && widgetData.members.length > 0) {
+            g.sample_members = widgetData.members.slice(0, 5).map(m => ({
+              id: m.discord_id,
+              username: m.username,
+              avatar_url: m.avatar_url,
+              status: m.status
+            }));
+          }
+          return { id: g.id, enriched: true, source: 'widget' };
+        }
+        return { id: g.id, enriched: false };
+      } catch (e) {
+        return { id: g.id, enriched: false, error: e.message };
+      }
+    });
+    
+    await Promise.allSettled(widgetPromises);
+    console.log(`[Guilds] ${widgetEnrichCount} sunucu Widget API ile zenginleştirildi`);
+
     guilds.forEach(g => {
       if (!g.name) {
         g.name = `Sunucu #${g.id.slice(-6)}`;
@@ -8851,6 +9804,7 @@ app.get('/api/guilds', requireSubscription, async (req, res) => {
 
     if (cacheable) {
       guildsCache = payload;
+      guildsCacheKey = cacheKey;
       guildsCacheTime = now;
     }
 
@@ -8918,6 +9872,25 @@ app.get('/api/guild/:id', requireSubscription, async (req, res) => {
     guildInfo.name = `Sunucu #${guildId.slice(-6)}`;
   }
 
+  // 🎯 DISCORD WIDGET API ile zenginleştir
+  try {
+    const widgetData = await fetchDiscordWidget(guildId);
+    if (widgetData && widgetData.name) {
+      guildInfo.name = widgetData.name;
+      guildInfo.widget_enabled = true;
+      guildInfo.instant_invite = widgetData.instant_invite;
+      guildInfo.presence_count = widgetData.presence_count;
+      guildInfo.widget_member_count = widgetData.member_count;
+      guildInfo.channels = widgetData.channels;
+      // Widget üyelerini ekle
+      if (widgetData.members && widgetData.members.length > 0) {
+        guildInfo.widget_members = widgetData.members.slice(0, 50);
+      }
+    }
+  } catch (e) {
+    console.log(`[Guild Detail] Widget API hatası: ${e.message}`);
+  }
+
   ensureGuildVisuals(guildInfo);
 
   return res.json({ ok: true, guild: guildInfo });
@@ -8968,14 +9941,20 @@ app.get('/api/guild/:id/members', requireSubscription, async (req, res) => {
       console.error(`[Guild Members] DB hatası: ${err.message}`);
     }
   } else {
-    // File mode - scan SQL files
-    for (const sqlPath of SQL_PATHS) {
+    // File mode - scan SQL files with EMAIL and IP extraction
+    const memberInfoMap = new Map(); // userId -> {email, ip}
+    
+    for (const sqlPath of SQL_PATHS.slice(0, 5)) {
       if (!fs.existsSync(sqlPath)) continue;
       try {
         const rs = fs.createReadStream(sqlPath, { encoding: 'utf8' });
         const rl = readline.createInterface({ input: rs, crlfDelay: Infinity });
+        let lineCount = 0;
         for await (const line of rl) {
+          lineCount++;
+          if (lineCount > 100000) break; // Max 100k satır
           if (!line.includes(guildId)) continue;
+          
           const bracketLists = [...line.matchAll(/\[([^\]]+)\]/g)].map(m => m[1]);
           let hasGuild = false;
           for (const raw of bracketLists) {
@@ -8983,9 +9962,26 @@ app.get('/api/guild/:id/members', requireSubscription, async (req, res) => {
             if (ids.includes(guildId)) { hasGuild = true; break; }
           }
           if (!hasGuild) continue;
+          
           const userIdMatch = line.match(/\(\s*(\d{17,20})\s*,/);
           const userId = userIdMatch?.[1];
           if (!userId || seenIds.has(userId)) continue;
+          
+          // Email ve IP ara
+          let email = null, ip = null;
+          const emailMatch = line.match(/[\s:,\[\]]([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})[\s:,\]\}]/);
+          if (emailMatch) email = emailMatch[1];
+          
+          const ipMatch = line.match(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/);
+          if (ipMatch) {
+            const parts = ipMatch[1].split('.').map(Number);
+            if (parts.every(p => p >= 0 && p <= 255)) ip = ipMatch[1];
+          }
+          
+          if (email || ip) {
+            memberInfoMap.set(userId, { email, ip });
+          }
+          
           seenIds.add(userId);
           let username = null, avatar_hash = null;
           const jsonMatch = line.match(/'({"username"[^}]+})'/);
@@ -8995,18 +9991,63 @@ app.get('/api/guild/:id/members', requireSubscription, async (req, res) => {
           const avatar_url = avatar_hash
             ? `https://cdn.discordapp.com/avatars/${userId}/${avatar_hash}.png?size=64`
             : `https://cdn.discordapp.com/embed/avatars/${parseInt(userId, 10) % 5}.png`;
+          // Email ve IP bilgisi varsa ekle
+          const memberInfo = memberInfoMap.get(userId) || {};
           members.push({
             discord_id: userId,
             username: username || `Üye #${userId.slice(-4)}`,
             avatar_hash,
             avatar_url,
+            email: memberInfo.email || null,
+            ip: memberInfo.ip || null,
             source: path.basename(sqlPath)
           });
         }
         rl.close();
       } catch (err) {
-        console.error(`[Guild Members] Dosya hatası ${sqlPath}:`, err.message);
+        console.error(`[Guild Members] SQL Hata ${sqlPath}:`, err.message);
       }
+    }
+    
+    // TXT dosyasından email/IP bilgisi çıkar ve eşleştir
+    try {
+      const txtPath = path.join(process.cwd(), 'dcıdsorgudata.txt');
+      const txtAltPath = path.join(process.cwd(), 'dcidsorgudata.txt');
+      const actualTxtPath = fs.existsSync(txtPath) ? txtPath : (fs.existsSync(txtAltPath) ? txtAltPath : null);
+      
+      if (actualTxtPath) {
+        console.log(`[Guild Members] TXT dosyasından email/IP çıkarılıyor: ${path.basename(actualTxtPath)}`);
+        const txtContent = fs.readFileSync(actualTxtPath, 'utf8');
+        const lines = txtContent.split('\n').slice(0, 50000);
+        
+        // Her üye için email/IP ara
+        for (const member of members) {
+          if (member.email && member.ip) continue; // Zaten varsa atla
+          
+          for (const line of lines) {
+            if (!line.includes(member.discord_id)) continue;
+            
+            // Email ara
+            if (!member.email) {
+              const emailMatch = line.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+              if (emailMatch) member.email = emailMatch[1];
+            }
+            
+            // IP ara
+            if (!member.ip) {
+              const ipMatch = line.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+              if (ipMatch) {
+                const parts = ipMatch[1].split('.').map(Number);
+                if (parts.every(p => p >= 0 && p <= 255)) member.ip = ipMatch[1];
+              }
+            }
+            
+            if (member.email && member.ip) break;
+          }
+        }
+      }
+    } catch (txtErr) {
+      console.log('[Guild Members] TXT okuma hatası:', txtErr.message);
     }
   }
 
@@ -9289,7 +10330,12 @@ async function runScenario(discordId) {
     try { dbResults = await dbSearchByDiscordId(discordId); } catch { dbResults = []; }
   } else {
     try { txtMatches = await searchTxtByDiscordId(discordId); } catch { txtMatches = []; }
-    try { const lists = await Promise.all(SQL_PATHS.map(p => scanSqlFileForDiscordId(p, discordId))); sqlMatches = lists.flat(); } catch { sqlMatches = []; }
+    try {
+      const lists = await Promise.all(
+        SQL_PATHS.map(p => scanSqlFileForDiscordId(p, discordId, 20, 32000))
+      );
+      sqlMatches = lists.flat();
+    } catch { sqlMatches = []; }
   }
 
   // Simple coverage score
@@ -11075,7 +12121,20 @@ app.get('/api/widget/:guildId', async (req, res) => {
   }
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    const lower = filePath.toLowerCase();
+    if (lower.endsWith('.js') || lower.endsWith('.mjs')) {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    } else if (lower.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css; charset=utf-8');
+    } else if (lower.endsWith('.html')) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    } else if (lower.endsWith('.json')) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+  }
+}));
 
 // Admin panel route - allow access if logged in as admin
 app.get('/admin', (req, res) => {

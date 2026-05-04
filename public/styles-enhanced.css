@@ -262,6 +262,7 @@
   background: linear-gradient(90deg, #6366f1, #8b5cf6);
   transform: scaleX(0);
   transition: transform 0.3s ease;
+  pointer-events: none;
 }
 
 .guild-list-card:hover::before {
@@ -476,6 +477,7 @@
   font-size: 20px;
   color: #444;
   transition: all 0.3s ease;
+  pointer-events: none;
 }
 
 .guild-list-card:hover .guild-card-arrow {
@@ -2298,6 +2300,7 @@ body {
   border: 2px solid rgba(255, 255, 255, 0.2);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   z-index: 10;
+  pointer-events: none;
 }
 
 /* 🎯 SUNUCU İKONU - YENİ DÜZEN */
@@ -2441,6 +2444,7 @@ body {
   mask-composite: exclude;
   opacity: 0;
   transition: opacity 0.4s ease;
+  pointer-events: none;
 }
 
 .all-guild-card:hover::after {
@@ -2597,6 +2601,7 @@ body {
     0 0 0 3px rgba(35, 35, 40, 0.9);
   z-index: 10;
   transition: all 0.3s ease;
+  pointer-events: none;
 }
 
 .all-guild-card:hover .guild-order-badge {
@@ -2621,6 +2626,7 @@ body {
   font-size: 18px;
   transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   z-index: 1;
+  pointer-events: none;
 }
 
 .all-guild-card:hover .all-guild-arrow {

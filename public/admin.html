@@ -1349,11 +1349,14 @@
                     const moreCount = g.members.length - visibleMembers.length;
                     membersHtml = `
                         <div class="member-list" title="${g.members.length} aktif üye">
-                            ${visibleMembers.map(m => 
-                                m.avatar ? 
-                                `<img src="${m.avatar}" class="member-avatar" title="${escapeHtml(m.username)}" alt="">` :
-                                `<div class="member-avatar" style="background: #5865F2; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: bold;">${m.username?.[0]?.toUpperCase() || '?'}</div>`
-                            ).join('')}
+                            ${visibleMembers.map(m => {
+                                const mAvatar = m.avatar_url || (m.avatar?.startsWith('http') ? m.avatar : null);
+                                const mName = escapeHtml(m.display_name || m.nick || m.username || 'İsimsiz');
+                                const mStatus = m.status_emoji || '';
+                                return mAvatar ? 
+                                    `<img src="${mAvatar}" class="member-avatar" title="${mStatus} ${mName}" alt="${mName}" onerror="this.style.display='none'; this.nextElementSibling?.style?.removeProperty('display');">` :
+                                    `<div class="member-avatar" style="background: #5865F2; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: bold;" title="${mStatus} ${mName}">${mName[0]?.toUpperCase() || '?'}</div>`;
+                            }).join('')}
                             ${moreCount > 0 ? `<div class="member-more">+${moreCount}</div>` : ''}
                         </div>
                     `;

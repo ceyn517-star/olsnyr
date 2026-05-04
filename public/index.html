@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="tr">
+<html lang="tr" class="site-dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,6 +8,7 @@
     <meta name="color-scheme" content="dark" />
     <title>zagros</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles-utf8.css" />
     <link rel="stylesheet" href="/styles-enhanced.css" />
     <!-- Leaflet Maps -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -29,106 +30,83 @@
         <!-- Dark mode toggle -->
         <div class="dark-mode-toggle" style="margin-left:auto; padding:8px 6px; display:flex; align-items:center; gap:6px;">
           <label for="darkModeToggle" style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; color:#b9bbbe;">
-            <input id="darkModeToggle" type="checkbox" />Koyu Mod
+            <input id="darkModeToggle" type="checkbox" checked />Koyu mod
           </label>
         </div>
       </aside>
 
       <!-- Ana İçerik -->
       <div class="main-content">
-        <section class="card" id="authCard">
-          <div class="zagros-brand">
+        <section class="card auth-gate" id="authCard">
+          <div class="auth-gate__inner">
+          <header class="zagros-brand auth-brand">
             <div class="zagros-logo"> </div>
             <h2>ZAGROS OSINT</h2>
-            <p class="zagros-subtitle">discord.gg/zagros</p>
-          </div>
+            <p class="zagros-subtitle">discord.gg/zagrosleak</p>
+          </header>
 
-          <!-- Free Access - Direct login without HAP -->
-          <div id="freeLogin" class="login-mode">
-            <button id="autoLoginBtn" class="btn btn-primary" style="width: 100%; padding: 16px; font-size: 16px; font-weight: 600;">
-               Siteye Giriş Yap
-            </button>
-            <p class="muted" style="margin-top: 12px; text-align: center; font-size: 13px;">
-              Discord ID sorgusu ücretsiz (1 sorgu) | Diğer özellikler için premium gereklidir
-            </p>
-          </div>
-
-          <!-- Ceyn FindCord Profile Card -->
-          <div id="premiumContactCard" class="premium-contact-card" style="margin-top: 25px;">
-            <div class="findcord-header">
-              <span class="findcord-logo">🔍</span>
-              <span class="findcord-text">FindCord Profili</span>
+          <div class="team-card" id="premiumContactCard">
+            <div class="team-card__banner">
+              <img alt="" class="contact-banner-img team-card__banner-img" width="720" height="96" decoding="async" data-ceyn-banner hidden>
             </div>
-            <div class="contact-banner">
-              <img src="https://dcdn.dstn.to/banners/810571889936171028" alt="Banner" class="contact-banner-img" onerror="this.style.display='none'">
-              <div class="contact-banner-overlay">
-                <span class="ceyn-watermark">ceyn was here</span>
+            <div class="team-card__row">
+              <div class="team-card__avatar-wrap">
+                <img src="https://cdn.discordapp.com/embed/avatars/0.png" alt="" class="contact-avatar team-card__avatar" width="88" height="88" decoding="async" data-ceyn-avatar>
+                <span class="team-card__status" title="Çevrimiçi"></span>
               </div>
-            </div>
-            <div class="contact-content">
-              <div class="contact-avatar-wrapper">
-                <img src="https://dcdn.dstn.to/avatars/810571889936171028" alt="ceyn" class="contact-avatar" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'">
-                <div class="contact-status online"></div>
-                <div class="findcord-badge" title="FindCord Verified">✓</div>
-              </div>
-              <div class="contact-info">
-                <h3 class="contact-name">ceyn <span class="verified-badge">✓</span></h3>
-                <p class="contact-id">ID: 810571889936171028</p>
-                <p class="contact-role">Zagros Premium Satış</p>
-                <div class="contact-badges">
-                  <span class="badge owner-badge">👑 Owner</span>
-                  <span class="badge premium-badge">⭐ Premium</span>
-                  <span class="badge findcord-badge-sm">🔍 FindCord</span>
+              <div class="team-card__info">
+                <h3 class="contact-name team-card__name">ceyn <span class="verified-badge" aria-hidden="true">✓</span></h3>
+                <p class="contact-id team-card__id">ID: 810571889936171028</p>
+                <p class="team-card__role">Premium satış · destek</p>
+                <div class="contact-badges team-card__badges">
+                  <span class="badge owner-badge">Owner</span>
+                  <span class="badge premium-badge">Premium</span>
                 </div>
               </div>
-              <div class="contact-actions">
-                <a href="https://discord.com/users/810571889936171028" target="_blank" class="btn btn-friend" id="friendRequestBtn">
-                  <span>� Arkadaşlık İsteği Gönder</span>
-                </a>
-                <a href="https://discord.gg/ruzanRC9" target="_blank" class="btn btn-sales">
-                  <span>🛒 Satış Sunucusuna Katıl</span>
-                </a>
-              </div>
-              <div class="premium-notice">
-                <p>💡 <strong>1 ücretsiz sorgu hakkınızı kullandınız.</strong></p>
-                <p>Sınırsız erişim için premium satın alın.</p>
-              </div>
             </div>
+            <div class="contact-actions team-card__actions">
+              <a href="https://discord.com/users/810571889936171028" target="_blank" rel="noopener" class="btn btn-friend btn-team" id="friendRequestBtn">Discord profili</a>
+              <a href="https://discord.gg/zagrosleak" target="_blank" rel="noopener" class="btn btn-sales btn-team">Sunucu</a>
+            </div>
+            <p class="team-card__hint muted">Ücretsiz: 1 Discord ID sorgusu. Sınırsız erişim için premium anahtarı.</p>
           </div>
 
-          <!-- Login Tabs -->
-          <div class="login-tabs" style="margin-top: 25px;">
-            <button class="login-tab active" data-mode="free">Ücretsiz Giriş</button>
-            <button class="login-tab" data-mode="premium">Premium Giriş</button>
-          </div>
+          <div class="auth-login-shell">
+            <nav class="login-tabs" aria-label="Giriş türü">
+              <button type="button" class="login-tab active" data-mode="free">Ücretsiz</button>
+              <button type="button" class="login-tab" data-mode="premium">Premium</button>
+            </nav>
 
-          <!-- Premium Key Login -->
-          <div id="keyLogin" class="login-mode hidden">
-            <div class="premium-input-header">
-              <span class="premium-icon-large">🔐</span>
-              <h3>Premium Giriş</h3>
-              <p class="muted">Premium anahtarınızı girerek sınırsız erişim elde edin</p>
+            <div id="freeLogin" class="login-mode login-panel">
+              <button type="button" id="autoLoginBtn" class="btn btn-primary btn-auth-main">Siteye giriş</button>
+              <p class="auth-hint muted">Discord ID (1 ücretsiz sorgu) · diğer modüller premium</p>
             </div>
-            <div class="row" style="margin-top: 15px;">
-              <input id="key" type="text" placeholder="ZAGROS-XXXXXXXXXXXXXXXX" autocomplete="off" />
-              <button id="keyLoginBtn" class="btn btn-primary">Giriş Yap</button>
-            </div>
-            <div class="premium-benefits" style="margin-top: 20px;">
-              <h4 style="font-size: 14px; color: var(--text); margin-bottom: 10px;">Premium Avantajları:</h4>
-              <ul class="benefits-list">
-                <li><span class="benefit-icon">✓</span> Sınırsız Discord ID sorgusu</li>
-                <li><span class="benefit-icon">✓</span> Email ve IP OSINT erişimi</li>
-                <li><span class="benefit-icon">✓</span> Sunucu üye analizi</li>
-                <li><span class="benefit-icon">✓</span> 15+ farklı API entegrasyonu</li>
-                <li><span class="benefit-icon">✓</span> Özel destek ve güncellemeler</li>
+
+            <div id="keyLogin" class="login-mode login-panel hidden">
+              <div class="premium-input-header premium-input-header--compact">
+                <span class="premium-icon-large" aria-hidden="true">🔐</span>
+                <div>
+                  <h3>Premium giriş</h3>
+                  <p class="muted premium-lead">Anahtarınızı girin</p>
+                </div>
+              </div>
+              <div class="auth-key-row">
+                <input id="key" type="text" placeholder="ZAGROS-..." autocomplete="off" />
+                <button type="button" id="keyLoginBtn" class="btn btn-primary">Giriş</button>
+              </div>
+              <ul class="benefits-list benefits-list--compact">
+                <li>Sınırsız Discord ID</li>
+                <li>Email / IP OSINT</li>
+                <li>Sunucu analizi</li>
               </ul>
             </div>
+
+            <div id="authError" class="error hidden"></div>
           </div>
 
-          <div id="authError" class="error hidden"></div>
-
-          <div class="zagros-footer">
-            <span class="badge zagros-badge"> Zagros Güvenliği</span>
+          <footer class="zagros-footer">
+            <span class="badge zagros-badge">Zagros güvenliği</span>
+          </footer>
           </div>
         </section>
 
@@ -266,6 +244,6 @@
         </footer>
       </div>
 
-    <script src="/app.js"></script>
+    <script src="/app.js" charset="utf-8"></script>
   </body>
 </html>

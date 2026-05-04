@@ -1,9 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-// Deploy trigger: manual redeploy requested
-
-// Scan data directory to discover TXT and SQL sources
+/** Veri dizininde SQL/TXT kaynaklarını tarar; sunucu başlangıcında kullanılır. */
 export function scanDataSources(dataDir) {
   let TXT_PATH = path.join(dataDir, 'dcıdsorgudata.txt');
   let SQL_PATHS = [

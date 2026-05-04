@@ -462,13 +462,22 @@ export async function setCachedFindCordData(discordId, data, ttl = 7200) {
   return setCachedFindCord(discordId, data, ttl);
 }
 
-// Cache temizleme
+// Cache temizleme (SCAN — KEYS bloklamasını önler)
 export async function clearCache(pattern = '*') {
   if (!isRedisReady()) return false;
   try {
-    const keys = await redis.keys(pattern);
+    const keys = [];
+    let cursor = '0';
+    do {
+      const reply = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 500);
+      cursor = String(reply[0]);
+      keys.push(...reply[1]);
+    } while (cursor !== '0');
     if (keys.length > 0) {
-      await redis.del(...keys);
+      const chunk = 500;
+      for (let i = 0; i < keys.length; i += chunk) {
+        await redis.del(...keys.slice(i, i + chunk));
+      }
       console.log(`[Redis] ${keys.length} key silindi`);
     }
     return true;

@@ -54,16 +54,11 @@ function initPostgreSQL(connectionString) {
 
 function initSQLite(databasePath) {
   try {
-    // Ensure directory exists
-    import('fs').then(fs => {
-      import('path').then(path => {
-        const dir = path.dirname(databasePath);
-        if (!fs.existsSync(dir)) {
-          fs.mkdirSync(dir, { recursive: true });
-        }
-      });
-    });
-    
+    const dir = path.dirname(databasePath);
+    if (dir && dir !== '.' && !fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
     db = new Database(databasePath);
     db.pragma('journal_mode = WAL');
     isPostgres = false;
@@ -78,6 +73,14 @@ function initSQLite(databasePath) {
 export function getPool() { return isPostgres ? pool : db; }
 export function isDBReady() { return isPostgres ? !!pool : !!db; }
 export function isPostgreSQL() { return isPostgres; }
+
+/** Parametreli sorgu ($1, $2, …). Yalnız PostgreSQL; bulkLoad / seed için. */
+export async function runQuery(text, params = []) {
+  if (!isPostgres || !pool) {
+    throw new Error('runQuery requires PostgreSQL (DATABASE_URL postgres://...)');
+  }
+  return pool.query(text, params);
+}
 
 // SQL exec fonksiyonu - PostgreSQL veya SQLite
 export async function execSql(sql) {
@@ -106,41 +109,58 @@ export async function dbSearchByDiscordId(discordId) {
   // PostgreSQL mod
   if (isPostgres && pool) {
     try {
-      const usersRes = await pool.query(
-        `SELECT discord_id, username, discriminator, email, avatar_hash, 
-                registration_ip, last_ip, phone, bio, premium, verified, 
-                connections, source, created_at, last_login, mfa_enabled, 
-                locale, nsfw_allowed, public_flags, flags, 
-                high_quality, email_verified
-         FROM users WHERE discord_id = $1 LIMIT 50`,
-        [needle]
-      );
+      // 🛠️ Dinamik kolon seçimi - mevcut kolonları kontrol et
+      const columnRes = await pool.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'users'
+      `);
+      const columns = columnRes.rows.map(r => r.column_name);
       
-      const guildsRes = await pool.query(
-        `SELECT g.guild_id, g.guild_name, g.guild_icon, g.guild_banner, g.guild_description,
-                g.member_count, g.online_count, g.owner_id, g.created_at as guild_created_at
-         FROM user_guilds ug
-         JOIN guilds g ON ug.guild_id = g.guild_id
-         WHERE ug.discord_id = $1 LIMIT 100`,
-        [needle]
-      );
+      // Mevcut kolonlara göre SELECT oluştur
+      const selectCols = ['id', 'user_id', 'discord_id', 'username', 'email', 'ip_address', 'location', 'nickname', 'avatar_hash', 'banner_hash']
+        .filter(col => columns.includes(col))
+        .join(', ');
+      
+      // Discord ID arama - user_id veya discord_id kolonunda ara
+      let usersRes;
+      
+      // Önce discord_id kolonunda dene
+      if (columns.includes('discord_id')) {
+        usersRes = await pool.query(
+          `SELECT ${selectCols || '*'} FROM users WHERE discord_id = $1 LIMIT 50`,
+          [needle]
+        );
+      }
+      
+      // Sonuç yoksa user_id kolonunda dene (numeric olarak)
+      if ((!usersRes || usersRes.rows.length === 0) && columns.includes('user_id')) {
+        usersRes = await pool.query(
+          `SELECT ${selectCols || '*'} FROM users WHERE user_id = $1::bigint LIMIT 50`,
+          [needle]
+        );
+      }
+      
+      // ID kolonunda dene
+      if ((!usersRes || usersRes.rows.length === 0) && columns.includes('id')) {
+        usersRes = await pool.query(
+          `SELECT ${selectCols || '*'} FROM users WHERE id = $1::bigint LIMIT 50`,
+          [needle]
+        );
+      }
+      
+      if (!usersRes || usersRes.rows.length === 0) {
+        return [];
+      }
       
       return usersRes.rows.map(row => ({
-        discord_id: row.discord_id,
-        username: row.username,
+        discord_id: row.discord_id || row.user_id || row.id,
+        username: row.username || row.nickname,
         email: row.email,
-        ip: row.registration_ip || row.last_ip,
+        ip: row.ip_address || row.location,
         avatar_hash: row.avatar_hash,
-        phone: row.phone,
-        connections_apps: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || []),
-        source: row.source || 'database',
-        guilds: guildsRes.rows.map(g => ({
-          id: g.guild_id,
-          name: g.guild_name,
-          icon: g.guild_icon,
-          banner: g.guild_banner,
-          member_count: g.member_count,
-        }))
+        banner_hash: row.banner_hash,
+        source: 'database'
       }));
     } catch (err) {
       console.warn('[DB] PostgreSQL Discord ID search error:', err.message);
@@ -348,9 +368,21 @@ export async function dbSearchGuildMembers(guildId) {
 }
 
 // ============= TÜM GUILD'LER LİSTESİ =============
-export async function dbGetAllGuilds(options = {}) {
-  if (!db) return { guilds: [], total: 0 };
+function mapGuildListRows(rows) {
+  return (rows || []).map(row => ({
+    id: row.guild_id,
+    name: row.name || null,
+    icon: row.icon || null,
+    banner: row.banner || null,
+    description: row.description || null,
+    member_count: parseInt(row.member_count, 10),
+    sample_member_ids: [],
+    metadata_source: (row.name || row.icon || row.banner || row.description) ? 'database' : null,
+    metadata_updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null
+  }));
+}
 
+export async function dbGetAllGuilds(options = {}) {
   const {
     limit = 200,
     offset = 0,
@@ -359,6 +391,74 @@ export async function dbGetAllGuilds(options = {}) {
 
   const limitVal = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 500);
   const offsetVal = Math.max(parseInt(offset, 10) || 0, 0);
+
+  if (isPostgres && pool) {
+    try {
+      const term = String(searchTerm || '').trim().toLowerCase();
+      if (term) {
+        const searchPattern = `%${term}%`;
+        const listRes = await pool.query(
+          `SELECT * FROM (
+             SELECT ug.guild_id,
+                    COUNT(DISTINCT ug.discord_id)::bigint AS member_count,
+                    MAX(gc.name) AS name,
+                    MAX(gc.icon) AS icon,
+                    MAX(gc.banner) AS banner,
+                    MAX(gc.description) AS description,
+                    MAX(gc.updated_at) AS updated_at
+             FROM user_guilds ug
+             LEFT JOIN guild_cache gc ON gc.guild_id = ug.guild_id
+             GROUP BY ug.guild_id
+           ) t
+           WHERE LOWER(COALESCE(t.name, '')) LIKE $1 OR LOWER(t.guild_id::text) LIKE $1
+           ORDER BY t.member_count DESC
+           LIMIT $2 OFFSET $3`,
+          [searchPattern, limitVal, offsetVal]
+        );
+        const countRes = await pool.query(
+          `SELECT COUNT(*)::bigint AS cnt FROM (
+             SELECT ug.guild_id
+             FROM user_guilds ug
+             LEFT JOIN guild_cache gc ON gc.guild_id = ug.guild_id
+             GROUP BY ug.guild_id
+             HAVING LOWER(COALESCE(MAX(gc.name), '')) LIKE $1 OR LOWER(ug.guild_id::text) LIKE $1
+           ) x`,
+          [searchPattern]
+        );
+        return {
+          guilds: mapGuildListRows(listRes.rows),
+          total: Number(countRes.rows[0]?.cnt || 0)
+        };
+      }
+      const listRes = await pool.query(
+        `SELECT ug.guild_id,
+                COUNT(DISTINCT ug.discord_id)::bigint AS member_count,
+                MAX(gc.name) AS name,
+                MAX(gc.icon) AS icon,
+                MAX(gc.banner) AS banner,
+                MAX(gc.description) AS description,
+                MAX(gc.updated_at) AS updated_at
+         FROM user_guilds ug
+         LEFT JOIN guild_cache gc ON gc.guild_id = ug.guild_id
+         GROUP BY ug.guild_id
+         ORDER BY member_count DESC
+         LIMIT $1 OFFSET $2`,
+        [limitVal, offsetVal]
+      );
+      const countRes = await pool.query(
+        'SELECT COUNT(DISTINCT guild_id)::bigint AS cnt FROM user_guilds'
+      );
+      return {
+        guilds: mapGuildListRows(listRes.rows),
+        total: Number(countRes.rows[0]?.cnt || 0)
+      };
+    } catch (err) {
+      console.warn('[DB] PostgreSQL Get all guilds error:', err.message);
+      return { guilds: [], total: 0 };
+    }
+  }
+
+  if (!db) return { guilds: [], total: 0 };
 
   try {
     // SQLite CTE ve ARRAY_AGG desteklemez, basit versiyon kullan
@@ -387,17 +487,7 @@ export async function dbGetAllGuilds(options = {}) {
       const countRes = countQuery.get(searchPattern, searchPattern);
       
       return {
-        guilds: (listRes || []).map(row => ({
-          id: row.guild_id,
-          name: row.name || null,
-          icon: row.icon || null,
-          banner: row.banner || null,
-          description: row.description || null,
-          member_count: parseInt(row.member_count, 10),
-          sample_member_ids: [],
-          metadata_source: (row.name || row.icon || row.banner || row.description) ? 'database' : null,
-          metadata_updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null
-        })),
+        guilds: mapGuildListRows(listRes),
         total: Number(countRes?.count || 0)
       };
     } else {
@@ -416,17 +506,7 @@ export async function dbGetAllGuilds(options = {}) {
       const countRes = countQuery.get();
       
       return {
-        guilds: (listRes || []).map(row => ({
-          id: row.guild_id,
-          name: row.name || null,
-          icon: row.icon || null,
-          banner: row.banner || null,
-          description: row.description || null,
-          member_count: parseInt(row.member_count, 10),
-          sample_member_ids: [],
-          metadata_source: (row.name || row.icon || row.banner || row.description) ? 'database' : null,
-          metadata_updated_at: row.updated_at ? new Date(row.updated_at).toISOString() : null
-        })),
+        guilds: mapGuildListRows(listRes),
         total: Number(countRes?.count || 0)
       };
     }
@@ -437,9 +517,33 @@ export async function dbGetAllGuilds(options = {}) {
 }
 
 export async function dbGetUsersByIds(discordIds = []) {
-  if (!db || !discordIds?.length) return new Map();
   const uniqueIds = Array.from(new Set(discordIds.map(id => String(id).trim()).filter(Boolean)));
   if (!uniqueIds.length) return new Map();
+
+  if (isPostgres && pool) {
+    try {
+      const placeholders = uniqueIds.map((_, i) => `$${i + 1}`).join(',');
+      const r = await pool.query(
+        `SELECT discord_id, username, avatar_hash, connections FROM users WHERE discord_id IN (${placeholders})`,
+        uniqueIds
+      );
+      const map = new Map();
+      for (const row of r.rows) {
+        map.set(row.discord_id, {
+          id: row.discord_id,
+          username: row.username,
+          avatar_hash: row.avatar_hash,
+          connections: typeof row.connections === 'string' ? JSON.parse(row.connections || '[]') : (row.connections || [])
+        });
+      }
+      return map;
+    } catch (err) {
+      console.warn('[DB] PostgreSQL Get users by IDs error:', err.message);
+      return new Map();
+    }
+  }
+
+  if (!db) return new Map();
 
   try {
     // SQLite ANY() desteklemez, IN kullan
@@ -654,7 +758,7 @@ export async function dbSearchByField(field, value) {
     return rows.map(row => ({
       discord_id: row.discord_id,
       email: row.email,
-      ip: row.ip,
+      ip: row.ip || row.registration_ip || row.last_ip,
       username: row.username,
       avatar_hash: row.avatar_hash,
       phone: row.phone,
